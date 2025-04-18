@@ -2,6 +2,7 @@ import cors from 'cors';
 import express, { Request, Response } from 'express';
 
 import { deepResearch, writeFinalAnswer } from './deep-research';
+import { MeshRestrictiveness } from './pubmed';
 
 const app = express();
 const port = process.env.PORT || 3051;
@@ -18,24 +19,37 @@ function log(...args: any[]) {
 // API endpoint to run research
 app.post('/api/research', async (req: Request, res: Response) => {
   try {
-    const { query, depth = 3, breadth = 3 } = req.body;
+    const { query, depth = 3, breadth = 3, meshRestrictiveness = 'medium' } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
     }
 
+    // Convert meshRestrictiveness string to enum
+    let meshRestrictivenessEnum = MeshRestrictiveness.MEDIUM;
+    if (meshRestrictiveness === 'low') {
+      meshRestrictivenessEnum = MeshRestrictiveness.LOW;
+    } else if (meshRestrictiveness === 'high') {
+      meshRestrictivenessEnum = MeshRestrictiveness.HIGH;
+    }
+
     log('\nStarting research...\n');
 
-    const { learnings, visitedUrls } = await deepResearch({
+    const { learnings, visitedUrls, pubMedArticles } = await deepResearch({
       query,
       breadth,
       depth,
+      meshRestrictiveness: meshRestrictivenessEnum,
     });
 
     log(`\n\nLearnings:\n\n${learnings.join('\n')}`);
     log(
       `\n\nVisited URLs (${visitedUrls.length}):\n\n${visitedUrls.join('\n')}`,
     );
+
+    if (pubMedArticles && pubMedArticles.length > 0) {
+      log(`\n\nPubMed Articles (${pubMedArticles.length}):\n\n${pubMedArticles.map(a => a.title).join('\n')}`);
+    }
 
     const answer = await writeFinalAnswer({
       prompt: query,
@@ -48,6 +62,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
       answer,
       learnings,
       visitedUrls,
+      pubMedArticles,
     });
   } catch (error: unknown) {
     console.error('Error in research API:', error);

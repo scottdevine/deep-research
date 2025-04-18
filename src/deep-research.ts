@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { getModel, trimPrompt } from './ai/providers';
 import { systemPrompt } from './prompt';
+import { MeshRestrictiveness, PubMedArticle, pubMedResultToMarkdown, searchPubMed } from './pubmed';
 
 function log(...args: any[]) {
   console.log(...args);
@@ -24,6 +25,7 @@ export type ResearchProgress = {
 type ResearchResult = {
   learnings: string[];
   visitedUrls: string[];
+  pubMedArticles?: PubMedArticle[];
 };
 
 // increase this if you have higher API rate limits
@@ -83,16 +85,25 @@ async function processSerpResult({
   result,
   numLearnings = 3,
   numFollowUpQuestions = 3,
+  pubMedArticles = [],
 }: {
   query: string;
   result: SearchResponse;
   numLearnings?: number;
   numFollowUpQuestions?: number;
+  pubMedArticles?: PubMedArticle[];
 }) {
   const contents = compact(result.data.map(item => item.markdown)).map(content =>
     trimPrompt(content, 25_000),
   );
-  log(`Ran ${query}, found ${contents.length} contents`);
+
+  // Add PubMed articles to contents if available
+  if (pubMedArticles && pubMedArticles.length > 0) {
+    const pubMedContents = pubMedArticles.map(article => pubMedResultToMarkdown(article));
+    contents.push(...pubMedContents);
+  }
+
+  log(`Ran ${query}, found ${contents.length} contents (including ${pubMedArticles?.length || 0} PubMed articles)`);
 
   const res = await generateObject({
     model: getModel(),
@@ -121,10 +132,12 @@ export async function writeFinalReport({
   prompt,
   learnings,
   visitedUrls,
+  pubMedArticles = [],
 }: {
   prompt: string;
   learnings: string[];
   visitedUrls: string[];
+  pubMedArticles?: PubMedArticle[];
 }) {
   const learningsString = learnings
     .map(learning => `<learning>\n${learning}\n</learning>`)
@@ -142,8 +155,17 @@ export async function writeFinalReport({
   });
 
   // Append the visited URLs section to the report
-  const urlsSection = `\n\n## Sources\n\n${visitedUrls.map(url => `- ${url}`).join('\n')}`;
-  return res.object.reportMarkdown + urlsSection;
+  let sourcesSection = `\n\n## Sources\n\n${visitedUrls.map(url => `- ${url}`).join('\n')}`;
+
+  // Add PubMed citations if available
+  if (pubMedArticles && pubMedArticles.length > 0) {
+    sourcesSection += '\n\n## PubMed Citations\n\n';
+    sourcesSection += pubMedArticles.map((article, index) => {
+      return `${index + 1}. ${article.authors?.join(', ') || '[No authors listed]'}. ${article.title}. ${article.journal || '[Journal not specified]'}. ${article.publicationDate || '[Date not specified]'}. ${article.doi ? `doi: ${article.doi}` : ''}\n   [PubMed Link](${article.url})\n`;
+    }).join('\n');
+  }
+
+  return res.object.reportMarkdown + sourcesSection;
 }
 
 export async function writeFinalAnswer({
@@ -179,6 +201,8 @@ export async function deepResearch({
   depth,
   learnings = [],
   visitedUrls = [],
+  pubMedArticles = [],
+  meshRestrictiveness = MeshRestrictiveness.MEDIUM,
   onProgress,
 }: {
   query: string;
@@ -186,6 +210,8 @@ export async function deepResearch({
   depth: number;
   learnings?: string[];
   visitedUrls?: string[];
+  pubMedArticles?: PubMedArticle[];
+  meshRestrictiveness?: MeshRestrictiveness;
   onProgress?: (progress: ResearchProgress) => void;
 }): Promise<ResearchResult> {
   const progress: ResearchProgress = {
@@ -219,21 +245,33 @@ export async function deepResearch({
     serpQueries.map(serpQuery =>
       limit(async () => {
         try {
+          // Search Firecrawl
           const result = await firecrawl.search(serpQuery.query, {
             timeout: 15000,
             limit: 5,
             scrapeOptions: { formats: ['markdown'] },
           });
 
+          // Search PubMed if enabled
+          let newPubMedArticles: PubMedArticle[] = [];
+          if (process.env.INCLUDE_PUBMED_SEARCH === 'true' && process.env.PUBMED_API_KEY) {
+            const pubMedResult = await searchPubMed(serpQuery.query, 3, true, meshRestrictiveness);
+            newPubMedArticles = pubMedResult.articles;
+          }
+
           // Collect URLs from this search
           const newUrls = compact(result.data.map(item => item.url));
           const newBreadth = Math.ceil(breadth / 2);
           const newDepth = depth - 1;
 
+          // Combine PubMed articles
+          const allPubMedArticles = [...pubMedArticles, ...newPubMedArticles];
+
           const newLearnings = await processSerpResult({
             query: serpQuery.query,
             result,
             numFollowUpQuestions: newBreadth,
+            pubMedArticles: newPubMedArticles,
           });
           const allLearnings = [...learnings, ...newLearnings.learnings];
           const allUrls = [...visitedUrls, ...newUrls];
@@ -259,6 +297,8 @@ export async function deepResearch({
               depth: newDepth,
               learnings: allLearnings,
               visitedUrls: allUrls,
+              pubMedArticles: allPubMedArticles,
+              meshRestrictiveness,
               onProgress,
             });
           } else {
@@ -270,6 +310,7 @@ export async function deepResearch({
             return {
               learnings: allLearnings,
               visitedUrls: allUrls,
+              pubMedArticles: allPubMedArticles,
             };
           }
         } catch (e: any) {
@@ -281,14 +322,27 @@ export async function deepResearch({
           return {
             learnings: [],
             visitedUrls: [],
+            pubMedArticles: [],
           };
         }
       }),
     ),
   );
 
+  // Combine all PubMed articles from results
+  const allPubMedArticles = results.flatMap(r => r.pubMedArticles || []);
+
+  // Deduplicate PubMed articles by ID
+  const uniquePubMedArticles = allPubMedArticles.reduce((acc, article) => {
+    if (!acc.some(a => a.id === article.id)) {
+      acc.push(article);
+    }
+    return acc;
+  }, [] as PubMedArticle[]);
+
   return {
     learnings: [...new Set(results.flatMap(r => r.learnings))],
     visitedUrls: [...new Set(results.flatMap(r => r.visitedUrls))],
+    pubMedArticles: uniquePubMedArticles,
   };
 }

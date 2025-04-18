@@ -73,6 +73,7 @@ flowchart TB
 - **Smart Follow-up**: Generates follow-up questions to better understand research needs
 - **Comprehensive Reports**: Produces detailed markdown reports with findings and sources
 - **Concurrent Processing**: Handles multiple searches and result processing in parallel for efficiency
+- **PubMed Integration**: Searches academic and medical research papers from PubMed alongside web content
 
 ## Requirements
 
@@ -80,6 +81,7 @@ flowchart TB
 - API keys for:
   - Firecrawl API (for web search and content extraction)
   - OpenAI API (for o3 mini model)
+  - PubMed API (optional, for academic and medical research)
 
 ## Setup
 
@@ -100,6 +102,11 @@ FIRECRAWL_KEY="your_firecrawl_key"
 # FIRECRAWL_BASE_URL="http://localhost:3002"
 
 OPENAI_KEY="your_openai_key"
+
+# Optional: PubMed API for academic and medical research
+# PUBMED_API_KEY="your_pubmed_api_key"
+# INCLUDE_PUBMED_SEARCH=true
+# CITATION_STYLE="NLM" # or "mla", "chicago", etc.
 ```
 
 To use local LLM, comment out `OPENAI_KEY` and instead uncomment `OPENAI_ENDPOINT` and `OPENAI_MODEL`:
@@ -144,9 +151,10 @@ You'll be prompted to:
 The system will then:
 
 1. Generate and execute search queries
-2. Process and analyze search results
-3. Recursively explore deeper based on findings
-4. Generate a comprehensive markdown report
+2. Search PubMed for academic papers (if enabled)
+3. Process and analyze search results and academic papers
+4. Recursively explore deeper based on findings
+5. Generate a comprehensive markdown report with citations
 
 The final report will be saved as `report.md` or `answer.md` in your working directory, depending on which modes you selected.
 
@@ -175,6 +183,25 @@ OPENAI_ENDPOINT="custom_endpoint"
 CUSTOM_MODEL="custom_model"
 ```
 
+### PubMed Integration
+
+The system can search academic and medical research papers from PubMed alongside web content. To enable this feature:
+
+```bash
+PUBMED_API_KEY="your_pubmed_api_key"
+INCLUDE_PUBMED_SEARCH=true
+USE_MESH_TERMS=true
+MESH_RESTRICTIVENESS="medium" # Options: "low", "medium", "high"
+CITATION_STYLE="NLM" # or "mla", "chicago", etc.
+```
+
+When enabled, the system will:
+- Search PubMed for relevant academic papers
+- Convert natural language queries to optimized PubMed search queries using MeSH terms
+- Allow users to control MeSH term restrictiveness (low/medium/high) to balance between precision and recall
+- Include paper abstracts in the research process
+- Add properly formatted citations to the final report
+
 ## How It Works
 
 1. **Initial Setup**
@@ -185,6 +212,7 @@ CUSTOM_MODEL="custom_model"
 2. **Deep Research Process**
 
    - Generates multiple SERP queries based on research goals
+   - Searches both web content and PubMed (if enabled)
    - Processes search results to extract key learnings
    - Generates follow-up research directions
 
@@ -196,8 +224,9 @@ CUSTOM_MODEL="custom_model"
 
 4. **Report Generation**
    - Compiles all findings into a comprehensive markdown report
-   - Includes all sources and references
+   - Includes all sources and references with proper citations
    - Organizes information in a clear, readable format
+   - Adds a dedicated section for academic citations when PubMed is used
 
 ## License
 

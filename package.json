@@ -8,7 +8,9 @@
     "start": "tsx --env-file=.env.local src/run.ts",
     "api": "tsx --env-file=.env.local src/api.ts",
     "docker": "tsx src/run.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "test:pubmed": "tsx --env-file=.env.local src/test-pubmed.ts",
+    "test:mesh": "tsx --env-file=.env.local src/test-mesh.ts"
   },
   "author": "",
   "license": "ISC",

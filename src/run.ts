@@ -8,6 +8,7 @@ import {
   writeFinalReport,
 } from './deep-research';
 import { generateFeedback } from './feedback';
+import { MeshRestrictiveness } from './pubmed';
 
 // Helper function for consistent logging
 function log(...args: any[]) {
@@ -53,6 +54,28 @@ async function run() {
       'Do you want to generate a long report or a specific answer? (report/answer, default report): ',
     )) !== 'answer';
 
+  // Ask about MeSH term restrictiveness if PubMed search is enabled
+  let meshRestrictiveness = process.env.MESH_RESTRICTIVENESS as MeshRestrictiveness || MeshRestrictiveness.MEDIUM;
+  if (process.env.INCLUDE_PUBMED_SEARCH === 'true' && process.env.USE_MESH_TERMS === 'true') {
+    const restrictiveness = await askQuestion(
+      'Select PubMed MeSH term restrictiveness (low/medium/high, default medium):\n' +
+      '- low: Broader search with more results\n' +
+      '- medium: Balanced approach\n' +
+      '- high: Narrower search with more specific results\n' +
+      'Your choice: '
+    );
+
+    if (restrictiveness.toLowerCase() === 'low') {
+      meshRestrictiveness = MeshRestrictiveness.LOW;
+    } else if (restrictiveness.toLowerCase() === 'high') {
+      meshRestrictiveness = MeshRestrictiveness.HIGH;
+    } else {
+      meshRestrictiveness = MeshRestrictiveness.MEDIUM;
+    }
+
+    log(`Using ${meshRestrictiveness} restrictiveness for MeSH terms.`);
+  }
+
   let combinedQuery = initialQuery;
   if (isReport) {
     log(`Creating research plan...`);
@@ -83,14 +106,20 @@ ${followUpQuestions.map((q: string, i: number) => `Q: ${q}\nA: ${answers[i]}`).j
 
   log('\nStarting research...\n');
 
-  const { learnings, visitedUrls } = await deepResearch({
+  const { learnings, visitedUrls, pubMedArticles } = await deepResearch({
     query: combinedQuery,
     breadth,
     depth,
+    meshRestrictiveness,
   });
 
   log(`\n\nLearnings:\n\n${learnings.join('\n')}`);
   log(`\n\nVisited URLs (${visitedUrls.length}):\n\n${visitedUrls.join('\n')}`);
+
+  if (pubMedArticles && pubMedArticles.length > 0) {
+    log(`\n\nPubMed Articles (${pubMedArticles.length}):\n\n${pubMedArticles.map(a => a.title).join('\n')}`);
+  }
+
   log('Writing final report...');
 
   if (isReport) {
@@ -98,6 +127,7 @@ ${followUpQuestions.map((q: string, i: number) => `Q: ${q}\nA: ${answers[i]}`).j
       prompt: combinedQuery,
       learnings,
       visitedUrls,
+      pubMedArticles,
     });
 
     await fs.writeFile('report.md', report, 'utf-8');
