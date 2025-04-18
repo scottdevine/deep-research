@@ -3,8 +3,9 @@ import express, { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
-import { jsPDF } from 'jspdf';
-import mammoth from 'mammoth';
+import puppeteer from 'puppeteer';
+import MarkdownIt from 'markdown-it';
+import HTMLtoDOCX from 'html-to-docx';
 
 import { deepResearch, writeFinalAnswer, writeFinalReport } from './deep-research';
 import { MeshRestrictiveness } from './pubmed';
@@ -293,7 +294,7 @@ app.get('/api/research/:id', (req: Request, res: Response) => {
 });
 
 // API endpoint to export research results
-app.get('/api/export/:format/:id', (req: Request, res: Response) => {
+app.get('/api/export/:format/:id', async (req: Request, res: Response) => {
   const { format, id } = req.params;
   const session = sessions[id];
 
@@ -315,6 +316,114 @@ app.get('/api/export/:format/:id', (req: Request, res: Response) => {
   }
 
   try {
+    // Initialize markdown parser
+    const md = new MarkdownIt({
+      html: true,
+      linkify: true,
+      typographer: true
+    });
+
+    // Convert markdown to HTML
+    const htmlContent = md.render(report);
+
+    // Create a complete HTML document with proper styling
+    const fullHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Research Report</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          h1 {
+            color: #2c3e50;
+            font-size: 28px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+          }
+          h2 {
+            color: #3498db;
+            font-size: 22px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+          }
+          h3 {
+            color: #2980b9;
+            font-size: 18px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+          }
+          p {
+            margin-bottom: 15px;
+            line-height: 1.6;
+          }
+          a {
+            color: #3498db;
+            text-decoration: none;
+          }
+          a:hover {
+            text-decoration: underline;
+          }
+          ul, ol {
+            margin-bottom: 20px;
+            padding-left: 20px;
+          }
+          li {
+            margin-bottom: 8px;
+          }
+          blockquote {
+            border-left: 4px solid #ccc;
+            padding-left: 15px;
+            color: #666;
+            margin: 15px 0;
+          }
+          code {
+            background-color: #f8f8f8;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+          }
+          pre {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+          }
+          table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+          }
+          th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+          }
+          th {
+            background-color: #f2f2f2;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+          }
+        </style>
+      </head>
+      <body>
+        ${htmlContent}
+      </body>
+      </html>
+    `;
+
     switch (format) {
       case 'markdown':
         res.setHeader('Content-Type', 'text/markdown');
@@ -323,49 +432,26 @@ app.get('/api/export/:format/:id', (req: Request, res: Response) => {
 
       case 'pdf':
         try {
-          // Convert markdown to HTML
-          const html = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <title>Research Report</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                h1 { color: #333; }
-                h2 { color: #555; margin-top: 20px; }
-                p { line-height: 1.5; }
-                a { color: #0066cc; }
-                ul { margin-bottom: 20px; }
-                li { margin-bottom: 5px; }
-              </style>
-            </head>
-            <body>
-              ${report.replace(/^# (.+)$/gm, '<h1>$1</h1>')  // Replace # headings
-                .replace(/^## (.+)$/gm, '<h2>$1</h2>')       // Replace ## headings
-                .replace(/^### (.+)$/gm, '<h3>$1</h3>')     // Replace ### headings
-                .replace(/\n\n/g, '</p><p>')               // Replace double newlines with paragraphs
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Replace bold
-                .replace(/\*(.+?)\*/g, '<em>$1</em>')       // Replace italic
-                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>') // Replace links
-                .replace(/^- (.+)$/gm, '<li>$1</li>')       // Replace list items
-              }
-            </body>
-            </html>
-          `;
+          // Launch a headless browser
+          const browser = await puppeteer.launch({ headless: 'new' });
+          const page = await browser.newPage();
 
-          // Create a PDF document
-          const doc = new jsPDF();
+          // Set the HTML content
+          await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-          // Split the text to fit on pages
-          const splitText = doc.splitTextToSize(report.replace(/\n/g, ' '), 180);
+          // Generate PDF
+          const pdfBuffer = await page.pdf({
+            format: 'A4',
+            margin: { top: '1cm', right: '1cm', bottom: '1cm', left: '1cm' },
+            printBackground: true,
+            displayHeaderFooter: true,
+            headerTemplate: '<div style="font-size: 8px; margin-left: 20px;">Research Report</div>',
+            footerTemplate: '<div style="font-size: 8px; margin-left: 20px; width: 100%; text-align: center;"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+            preferCSSPageSize: true
+          });
 
-          // Add text to the PDF
-          doc.setFontSize(12);
-          doc.text(splitText, 15, 15);
-
-          // Get the PDF as a buffer
-          const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+          // Close the browser
+          await browser.close();
 
           res.setHeader('Content-Type', 'application/pdf');
           res.setHeader('Content-Disposition', `attachment; filename="research-${id}.pdf"`);
@@ -380,46 +466,13 @@ app.get('/api/export/:format/:id', (req: Request, res: Response) => {
 
       case 'word':
         try {
-          // Convert markdown to HTML
-          const html = `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <meta charset="utf-8">
-              <title>Research Report</title>
-              <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                h1 { color: #333; }
-                h2 { color: #555; margin-top: 20px; }
-                p { line-height: 1.5; }
-                a { color: #0066cc; }
-                ul { margin-bottom: 20px; }
-                li { margin-bottom: 5px; }
-              </style>
-            </head>
-            <body>
-              ${report.replace(/^# (.+)$/gm, '<h1>$1</h1>')  // Replace # headings
-                .replace(/^## (.+)$/gm, '<h2>$1</h2>')       // Replace ## headings
-                .replace(/^### (.+)$/gm, '<h3>$1</h3>')     // Replace ### headings
-                .replace(/\n\n/g, '</p><p>')               // Replace double newlines with paragraphs
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Replace bold
-                .replace(/\*(.+?)\*/g, '<em>$1</em>')       // Replace italic
-                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>') // Replace links
-                .replace(/^- (.+)$/gm, '<li>$1</li>')       // Replace list items
-              }
-            </body>
-            </html>
-          `;
-
-          // Create a temporary HTML file
-          const tempHtmlPath = path.join(__dirname, `../temp-${id}.html`);
-          fs.writeFileSync(tempHtmlPath, html);
-
-          // Convert HTML to DOCX using mammoth (in reverse)
-          const docxBuffer = Buffer.from(html);
-
-          // Clean up the temporary file
-          fs.unlinkSync(tempHtmlPath);
+          // Generate DOCX from HTML
+          const docxBuffer = await HTMLtoDOCX(fullHtml, null, {
+            title: 'Research Report',
+            table: { row: { cantSplit: true } },
+            footer: true,
+            pageNumber: true
+          });
 
           res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
           res.setHeader('Content-Disposition', `attachment; filename="research-${id}.docx"`);
