@@ -143,26 +143,55 @@ export async function writeFinalReport({
     .map(learning => `<learning>\n${learning}\n</learning>`)
     .join('\n');
 
+  // Prepare sources for citation
+  const webSources = visitedUrls.map((url, index) => ({
+    id: `web${index + 1}`,
+    url,
+    type: 'web'
+  }));
+
+  const pubmedSources = pubMedArticles.map((article, index) => ({
+    id: `pubmed${index + 1}`,
+    url: article.url,
+    title: article.title,
+    authors: article.authors?.join(', ') || '[No authors listed]',
+    journal: article.journal || '[Journal not specified]',
+    publicationDate: article.publicationDate || '[Date not specified]',
+    doi: article.doi,
+    type: 'pubmed'
+  }));
+
+  const allSources = [...webSources, ...pubmedSources];
+  const sourcesString = JSON.stringify(allSources);
+
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
     prompt: trimPrompt(
-      `Given the following prompt from the user, write a final report on the topic using the learnings from research. Make it as as detailed as possible, aim for 3 or more pages, include ALL the learnings from research:\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>`,
+      `Given the following prompt from the user, write a final report on the topic using the learnings from research. Make it as detailed as possible, aim for 3 or more pages, and include ALL the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\nVERY IMPORTANT: For EVERY factual statement in your report, you MUST include a citation to the relevant source. Here are the available sources you can cite:\n\n<sources>${sourcesString}</sources>\n\nCitation format:\n- For web sources: Use [web1], [web2], etc. at the end of the sentence or paragraph containing the information.\n- For PubMed sources: Use [pubmed1], [pubmed2], etc. at the end of the sentence or paragraph containing the information.\n\nYou MUST include at least one citation for every paragraph. If a paragraph contains information from multiple sources, include all relevant citations. If you're unsure which exact source a piece of information came from, cite multiple potential sources.\n\nExample of proper citation:\n"Recent studies have shown that immunotherapy is effective for treating certain types of cancer [web1][pubmed2]. However, the efficacy varies significantly based on cancer type and patient characteristics [pubmed1][web3]."`,
     ),
     schema: z.object({
-      reportMarkdown: z.string().describe('Final report on the topic in Markdown'),
+      reportMarkdown: z.string().describe('Final report on the topic in Markdown with proper citations'),
     }),
   });
 
-  // Append the visited URLs section to the report
-  let sourcesSection = `\n\n## Sources\n\n${visitedUrls.map(url => `- ${url}`).join('\n')}`;
+  // Append the sources section to the report with proper formatting
+  let sourcesSection = `\n\n## References\n\n`;
+
+  // Add web sources
+  if (webSources.length > 0) {
+    sourcesSection += `### Web Sources\n\n`;
+    sourcesSection += webSources.map(source => {
+      return `[${source.id}] ${source.url}`;
+    }).join('\n\n');
+  }
 
   // Add PubMed citations if available
-  if (pubMedArticles && pubMedArticles.length > 0) {
-    sourcesSection += '\n\n## PubMed Citations\n\n';
-    sourcesSection += pubMedArticles.map((article, index) => {
-      return `${index + 1}. ${article.authors?.join(', ') || '[No authors listed]'}. ${article.title}. ${article.journal || '[Journal not specified]'}. ${article.publicationDate || '[Date not specified]'}. ${article.doi ? `doi: ${article.doi}` : ''}\n   [PubMed Link](${article.url})\n`;
-    }).join('\n');
+  if (pubmedSources.length > 0) {
+    sourcesSection += '\n\n### PubMed Citations\n\n';
+    sourcesSection += pubmedSources.map(source => {
+      return `[${source.id}] ${source.authors}. ${source.title}. ${source.journal}. ${source.publicationDate}. ${source.doi ? `doi: ${source.doi}` : ''}\n   [PubMed Link](${source.url})`;
+    }).join('\n\n');
   }
 
   return res.object.reportMarkdown + sourcesSection;
