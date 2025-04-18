@@ -146,6 +146,7 @@ ${formData.followUpAnswers.map((answer: string, i: number) => `Q: Question ${i +
         {step === 'results' && results && (
           <ResearchResults
             results={results}
+            researchId={researchId}
             onNewSearch={handleNewSearch}
           />
         )}

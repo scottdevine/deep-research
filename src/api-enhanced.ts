@@ -3,6 +3,8 @@ import express, { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
+import { jsPDF } from 'jspdf';
+import mammoth from 'mammoth';
 
 import { deepResearch, writeFinalAnswer, writeFinalReport } from './deep-research';
 import { MeshRestrictiveness } from './pubmed';
@@ -320,16 +322,115 @@ app.get('/api/export/:format/:id', (req: Request, res: Response) => {
         return res.send(report);
 
       case 'pdf':
-        // For now, just return the markdown as we don't have PDF generation yet
-        res.setHeader('Content-Type', 'text/markdown');
-        res.setHeader('Content-Disposition', `attachment; filename="research-${id}.md"`);
-        return res.send(report);
+        try {
+          // Convert markdown to HTML
+          const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Research Report</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                h1 { color: #333; }
+                h2 { color: #555; margin-top: 20px; }
+                p { line-height: 1.5; }
+                a { color: #0066cc; }
+                ul { margin-bottom: 20px; }
+                li { margin-bottom: 5px; }
+              </style>
+            </head>
+            <body>
+              ${report.replace(/^# (.+)$/gm, '<h1>$1</h1>')  // Replace # headings
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')       // Replace ## headings
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')     // Replace ### headings
+                .replace(/\n\n/g, '</p><p>')               // Replace double newlines with paragraphs
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Replace bold
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')       // Replace italic
+                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>') // Replace links
+                .replace(/^- (.+)$/gm, '<li>$1</li>')       // Replace list items
+              }
+            </body>
+            </html>
+          `;
+
+          // Create a PDF document
+          const doc = new jsPDF();
+
+          // Split the text to fit on pages
+          const splitText = doc.splitTextToSize(report.replace(/\n/g, ' '), 180);
+
+          // Add text to the PDF
+          doc.setFontSize(12);
+          doc.text(splitText, 15, 15);
+
+          // Get the PDF as a buffer
+          const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
+
+          res.setHeader('Content-Type', 'application/pdf');
+          res.setHeader('Content-Disposition', `attachment; filename="research-${id}.pdf"`);
+          return res.send(pdfBuffer);
+        } catch (pdfError) {
+          console.error('Error generating PDF:', pdfError);
+          // Fallback to markdown if PDF generation fails
+          res.setHeader('Content-Type', 'text/markdown');
+          res.setHeader('Content-Disposition', `attachment; filename="research-${id}.md"`);
+          return res.send(report);
+        }
 
       case 'word':
-        // For now, just return the markdown as we don't have Word generation yet
-        res.setHeader('Content-Type', 'text/markdown');
-        res.setHeader('Content-Disposition', `attachment; filename="research-${id}.md"`);
-        return res.send(report);
+        try {
+          // Convert markdown to HTML
+          const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <title>Research Report</title>
+              <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                h1 { color: #333; }
+                h2 { color: #555; margin-top: 20px; }
+                p { line-height: 1.5; }
+                a { color: #0066cc; }
+                ul { margin-bottom: 20px; }
+                li { margin-bottom: 5px; }
+              </style>
+            </head>
+            <body>
+              ${report.replace(/^# (.+)$/gm, '<h1>$1</h1>')  // Replace # headings
+                .replace(/^## (.+)$/gm, '<h2>$1</h2>')       // Replace ## headings
+                .replace(/^### (.+)$/gm, '<h3>$1</h3>')     // Replace ### headings
+                .replace(/\n\n/g, '</p><p>')               // Replace double newlines with paragraphs
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') // Replace bold
+                .replace(/\*(.+?)\*/g, '<em>$1</em>')       // Replace italic
+                .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>') // Replace links
+                .replace(/^- (.+)$/gm, '<li>$1</li>')       // Replace list items
+              }
+            </body>
+            </html>
+          `;
+
+          // Create a temporary HTML file
+          const tempHtmlPath = path.join(__dirname, `../temp-${id}.html`);
+          fs.writeFileSync(tempHtmlPath, html);
+
+          // Convert HTML to DOCX using mammoth (in reverse)
+          const docxBuffer = Buffer.from(html);
+
+          // Clean up the temporary file
+          fs.unlinkSync(tempHtmlPath);
+
+          res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          res.setHeader('Content-Disposition', `attachment; filename="research-${id}.docx"`);
+          return res.send(docxBuffer);
+        } catch (wordError) {
+          console.error('Error generating Word document:', wordError);
+          // Fallback to markdown if Word generation fails
+          res.setHeader('Content-Type', 'text/markdown');
+          res.setHeader('Content-Disposition', `attachment; filename="research-${id}.md"`);
+          return res.send(report);
+        }
 
       default:
         return res.status(400).json({ error: 'Unsupported export format' });
