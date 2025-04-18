@@ -27,16 +27,55 @@ interface ResearchResultsProps {
 
 export default function ResearchResults({ results, onNewSearch }: ResearchResultsProps) {
   const [activeSection, setActiveSection] = useState<number | null>(null);
-  
+
   const toggleSection = (section: number) => {
     setActiveSection(activeSection === section ? null : section);
   };
-  
-  const exportReport = (format: 'pdf' | 'markdown' | 'word') => {
-    // In a real implementation, we would call an API to generate the export
-    alert(`Exporting in ${format} format`);
+
+  const exportReport = async (format: 'pdf' | 'markdown' | 'word') => {
+    try {
+      // Get the research ID from the URL
+      const urlParams = new URLSearchParams(window.location.search);
+      const researchId = urlParams.get('id');
+
+      if (!researchId) {
+        // If no ID in URL, create a temporary file with the report content
+        const blob = new Blob([results.report], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `research-report.${format === 'markdown' ? 'md' : format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      // Call the API to generate the export
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3051';
+      const response = await fetch(`${apiUrl}/api/export/${format}/${researchId}`);
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      // Download the file
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `research-${researchId}.${format === 'markdown' ? 'md' : format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(`Error exporting as ${format}:`, error);
+      alert(`Failed to export as ${format}. Please try again.`);
+    }
   };
-  
+
   // Extract sections from the markdown report
   // This is a simplified version - in a real implementation, we would use a markdown parser
   const sections = results.report.split('## ').filter(Boolean).map(section => {
@@ -45,25 +84,25 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
     const content = lines.slice(1).join('\n');
     return { title, content };
   });
-  
+
   return (
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Research Results</h1>
         <div className="space-x-2">
-          <button 
+          <button
             onClick={() => exportReport('pdf')}
             className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md"
           >
             Export as PDF
           </button>
-          <button 
+          <button
             onClick={() => exportReport('markdown')}
             className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md"
           >
             Export as Markdown
           </button>
-          <button 
+          <button
             onClick={() => exportReport('word')}
             className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded-md"
           >
@@ -71,10 +110,10 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
           </button>
         </div>
       </div>
-      
+
       <div className="mb-8">
         <h2 className="text-2xl font-bold mb-4">Report</h2>
-        
+
         <div className="border rounded-lg overflow-hidden">
           {sections.map((section, index) => (
             <div key={index} className="border-b last:border-b-0">
@@ -85,7 +124,7 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
                 {section.title}
                 <span>{activeSection === index ? '−' : '+'}</span>
               </button>
-              
+
               {activeSection === index && (
                 <div className="p-4 prose max-w-none">
                   <div dangerouslySetInnerHTML={{ __html: section.content }} />
@@ -95,7 +134,7 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
           ))}
         </div>
       </div>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <h2 className="text-2xl font-bold mb-4">Sources</h2>
@@ -103,9 +142,9 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
             <ul className="divide-y divide-gray-200 max-h-80 overflow-y-auto">
               {results.visitedUrls.map((url, index) => (
                 <li key={index} className="p-3 hover:bg-gray-50">
-                  <a 
-                    href={url} 
-                    target="_blank" 
+                  <a
+                    href={url}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:underline text-sm"
                   >
@@ -116,7 +155,7 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
             </ul>
           </div>
         </div>
-        
+
         {results.pubMedArticles && results.pubMedArticles.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold mb-4">PubMed Citations</h2>
@@ -131,9 +170,9 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
                     <p className="text-sm text-gray-600">
                       {article.journal || 'Journal not specified'}, {article.publicationDate || 'Date not specified'}
                     </p>
-                    <a 
-                      href={article.url} 
-                      target="_blank" 
+                    <a
+                      href={article.url}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-600 hover:underline text-sm"
                     >
@@ -146,7 +185,7 @@ export default function ResearchResults({ results, onNewSearch }: ResearchResult
           </div>
         )}
       </div>
-      
+
       <div className="mt-8 text-center">
         <button
           onClick={onNewSearch}

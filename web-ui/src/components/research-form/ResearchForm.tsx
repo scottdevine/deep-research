@@ -37,15 +37,40 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
 
   const handleQuerySubmit = async (query: string) => {
     setFormData({ ...formData, query });
-    
-    // In a real implementation, we would fetch follow-up questions from the API
-    // For now, we'll use some sample questions
-    setFollowUpQuestions([
-      { id: '1', question: 'Are you interested in including both clinically approved treatments and those still in experimental or trial stages?' },
-      { id: '2', question: 'Would you like to focus exclusively on pharmacological interventions or also include non-pharmacological therapies?' },
-      { id: '3', question: 'Should the research scope be global or tailored to specific geographical regions or clinical guidelines?' },
-    ]);
-    
+
+    try {
+      // Fetch follow-up questions from the API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3051'}/api/questions/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Map the questions to the expected format
+      const questions = data.questions.map((question: string, index: number) => ({
+        id: String(index + 1),
+        question,
+      }));
+
+      setFollowUpQuestions(questions);
+    } catch (error) {
+      console.error('Error fetching follow-up questions:', error);
+      // Fallback to sample questions if the API call fails
+      setFollowUpQuestions([
+        { id: '1', question: 'Are you interested in including both clinically approved treatments and those still in experimental or trial stages?' },
+        { id: '2', question: 'Would you like to focus exclusively on pharmacological interventions or also include non-pharmacological therapies?' },
+        { id: '3', question: 'Should the research scope be global or tailored to specific geographical regions or clinical guidelines?' },
+      ]);
+    }
+
     setStep(2);
   };
 
@@ -62,14 +87,14 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       {step === 1 && (
-        <QueryStep 
-          initialQuery={formData.query} 
-          onSubmit={handleQuerySubmit} 
+        <QueryStep
+          initialQuery={formData.query}
+          onSubmit={handleQuerySubmit}
         />
       )}
-      
+
       {step === 2 && (
-        <ParametersStep 
+        <ParametersStep
           initialParameters={{
             breadth: formData.breadth,
             depth: formData.depth,
@@ -79,15 +104,15 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
           onSubmit={handleParametersSubmit}
         />
       )}
-      
+
       {step === 3 && (
-        <FollowUpStep 
+        <FollowUpStep
           questions={followUpQuestions}
           initialAnswers={formData.followUpAnswers}
           onSubmit={handleFollowUpSubmit}
         />
       )}
-      
+
       <div className="mt-6 flex justify-between">
         <div className="text-sm text-gray-500">
           Step {step} of 3

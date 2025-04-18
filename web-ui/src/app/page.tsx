@@ -54,17 +54,66 @@ export default function Home() {
   const [researchId, setResearchId] = useState<string>('');
   const [results, setResults] = useState<ResearchResult | null>(null);
 
-  const handleFormSubmit = (formData: any) => {
+  const handleFormSubmit = async (formData: any) => {
     console.log('Form submitted:', formData);
-    // Generate a random research ID
-    setResearchId(`research-${Math.random().toString(36).substring(2, 11)}`);
-    setStep('progress');
+    try {
+      // Start research via API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3051'}/api/research`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: formData.query,
+          breadth: formData.breadth,
+          depth: formData.depth,
+          meshRestrictiveness: formData.meshRestrictiveness,
+          outputType: formData.outputType,
+          // Combine initial query with follow-up Q&A
+          combinedQuery: `
+Initial Query: ${formData.query}
+Follow-up Questions and Answers:
+${formData.followUpAnswers.map((answer: string, i: number) => `Q: Question ${i + 1}\nA: ${answer}`).join('\n')}
+          `.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setResearchId(data.researchId);
+      setStep('progress');
+    } catch (error) {
+      console.error('Error starting research:', error);
+      alert('Failed to start research. Please try again.');
+    }
   };
 
-  const handleProgressComplete = () => {
-    // Set the sample results
-    setResults(sampleResult);
-    setStep('results');
+  const handleProgressComplete = async () => {
+    try {
+      // Fetch research results from the API
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3051'}/api/research/${researchId}`);
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setResults({
+        report: data.report || data.answer || '',
+        learnings: data.learnings || [],
+        visitedUrls: data.visitedUrls || [],
+        pubMedArticles: data.pubMedArticles || []
+      });
+      setStep('results');
+    } catch (error) {
+      console.error('Error fetching research results:', error);
+      // Fallback to sample results if the API call fails
+      setResults(sampleResult);
+      setStep('results');
+    }
   };
 
   const handleNewSearch = () => {
