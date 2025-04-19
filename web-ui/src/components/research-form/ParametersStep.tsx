@@ -97,7 +97,7 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
             </span>
           </div>
           <p className="mt-1 text-xs text-gray-500">
-            Recommended: 1-10, Default: 5. Higher values will produce more detailed and comprehensive insights and reports.
+            Recommended: 5-10, Default: 8. Higher values will produce more detailed and comprehensive insights and reports.
           </p>
         </div>
 

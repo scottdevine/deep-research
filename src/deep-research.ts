@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { getModel, trimPrompt } from './ai/providers';
 import { systemPrompt } from './prompt';
 import { MeshRestrictiveness, PubMedArticle, pubMedResultToMarkdown, searchPubMed } from './pubmed';
+import { createEnhancedReportPrompt } from './enhanced-report-prompt';
 
 function log(...args: any[]) {
   console.log(...args);
@@ -343,8 +344,8 @@ export async function writeFinalReport({
   const allSources = [...webSources, ...pubmedSources];
   const sourcesString = JSON.stringify(allSources);
 
-  // Create the report generation prompt based on insight detail
-  const reportPrompt = createReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
+  // Create the enhanced report generation prompt based on insight detail
+  const reportPrompt = createEnhancedReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
 
   // Log that we're generating the report
   console.log(`Generating ${detailLevel} report based on all learnings (no token limit)`);

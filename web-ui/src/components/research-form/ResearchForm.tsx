@@ -30,7 +30,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
     query: '',
     breadth: 4,
     depth: 2,
-    insightDetail: 5, // Add the insightDetail parameter with default value 5
+    insightDetail: 8, // Default to high detail level for comprehensive reports
     outputType: 'report',
     meshRestrictiveness: 'medium',
     followUpAnswers: [],
