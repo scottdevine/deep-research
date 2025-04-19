@@ -507,6 +507,45 @@ app.get('/api/export/:format/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Add an endpoint to fetch available models from OpenRouter
+app.get('/api/models', async (req, res) => {
+  try {
+    // Fetch models from OpenRouter API
+    const response = await fetch('https://openrouter.ai/api/v1/models', {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENROUTER_KEY}`,
+        'HTTP-Referer': 'http://localhost:3051', // Required by OpenRouter
+        'X-Title': 'Deep Research' // Optional, but good practice
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API returned ${response.status}: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+
+    // Format the models data for the frontend
+    const formattedModels = data.data.map((model: any) => ({
+      id: model.id,
+      name: model.name,
+      provider: model.provider.name || model.provider,
+      description: model.description,
+      context_length: model.context_length,
+      pricing: {
+        prompt: model.pricing?.prompt,
+        completion: model.pricing?.completion
+      },
+      capabilities: model.capabilities || {}
+    }));
+
+    res.json(formattedModels);
+  } catch (error) {
+    console.error('Error fetching models from OpenRouter:', error);
+    res.status(500).json({ error: 'Failed to fetch models from OpenRouter' });
+  }
+});
+
 // Start the server
 app.listen(port, () => {
   console.log(`Enhanced Deep Research API running on port ${port}`);

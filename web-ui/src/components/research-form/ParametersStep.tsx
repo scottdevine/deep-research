@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FormData } from './ResearchForm';
 
-// Import available models
-import { AVAILABLE_MODELS } from '../../../../src/ai/providers';
+// Import models types and functions
+import { Model, fetchModels, DEFAULT_MODELS } from '../../lib/models';
 
 interface ParametersStepProps {
   initialParameters: {
@@ -20,6 +20,34 @@ interface ParametersStepProps {
 
 export default function ParametersStep({ initialParameters, onSubmit }: ParametersStepProps) {
   const [parameters, setParameters] = useState(initialParameters);
+  const [models, setModels] = useState<Model[]>(DEFAULT_MODELS);
+  const [isLoadingModels, setIsLoadingModels] = useState(true);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  // Fetch models when component mounts
+  useEffect(() => {
+    async function loadModels() {
+      try {
+        setIsLoadingModels(true);
+        setModelError(null);
+        const fetchedModels = await fetchModels();
+
+        if (fetchedModels.length > 0) {
+          setModels(fetchedModels);
+        } else {
+          // If no models were returned, use defaults and show a warning
+          setModelError('Could not load models from OpenRouter. Using default models.');
+        }
+      } catch (error) {
+        console.error('Error loading models:', error);
+        setModelError('Failed to load models. Using default models.');
+      } finally {
+        setIsLoadingModels(false);
+      }
+    }
+
+    loadModels();
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,14 +237,36 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
               value={parameters.modelId || ''}
               onChange={(e) => setParameters({ ...parameters, modelId: e.target.value })}
               className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+              disabled={isLoadingModels}
             >
               <option value="">Default (Claude 3 Opus)</option>
-              {AVAILABLE_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.provider})
-                </option>
-              ))}
+              {isLoadingModels ? (
+                <option disabled>Loading models...</option>
+              ) : (
+                // Group models by provider
+                Object.entries(
+                  models.reduce((acc, model) => {
+                    const provider = model.provider || 'Other';
+                    if (!acc[provider]) acc[provider] = [];
+                    acc[provider].push(model);
+                    return acc;
+                  }, {} as Record<string, Model[]>)
+                ).map(([provider, providerModels]) => (
+                  <optgroup key={provider} label={provider}>
+                    {providerModels
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.name} {model.context_length ? `(${Math.round(model.context_length / 1000)}k ctx)` : ''}
+                        </option>
+                      ))}
+                  </optgroup>
+                ))
+              )}
             </select>
+            {modelError && (
+              <p className="mt-1 text-xs text-red-500">{modelError}</p>
+            )}
             <p className="mt-1 text-xs text-gray-500">
               Select a model to use for generating the report. More powerful models may produce better results but may take longer.
             </p>
