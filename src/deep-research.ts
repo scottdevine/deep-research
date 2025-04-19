@@ -387,6 +387,79 @@ function processLearningResults(result: any, insightDetail: number) {
 
 // Parse text-based learning results
 function parseTextLearnings(text: string, insightDetail: number, numLearnings: number, numFollowUpQuestions: number) {
+  // First try to extract JSON from the text
+  try {
+    // Check if the text contains a JSON object
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const jsonText = jsonMatch[0];
+      try {
+        // Try to parse the JSON
+        const jsonObj = JSON.parse(jsonText);
+        if (jsonObj.learnings && Array.isArray(jsonObj.learnings)) {
+          // Successfully parsed JSON with learnings
+          const extractedLearnings = jsonObj.learnings;
+
+          // Convert to the expected format
+          let learnings: string[] = [];
+          let detailedLearnings: any[] = [];
+
+          for (const learning of extractedLearnings) {
+            if (typeof learning === 'string') {
+              learnings.push(learning);
+            } else if (learning.title && learning.content) {
+              // This is a detailed learning
+              detailedLearnings.push({
+                title: learning.title,
+                content: learning.content,
+                sources: learning.sources || [],
+                keyPoints: learning.keyPoints || ["Key points not explicitly provided"]
+              });
+
+              // Also add to simple learnings
+              learnings.push(`${learning.title}\n\n${learning.content}`);
+            }
+          }
+
+          // Extract follow-up questions if available
+          let followUpQuestions: string[] = [];
+          if (jsonObj.followUpQuestions && Array.isArray(jsonObj.followUpQuestions)) {
+            followUpQuestions = jsonObj.followUpQuestions.slice(0, numFollowUpQuestions);
+          } else {
+            // Generate generic follow-up questions
+            followUpQuestions = [
+              "What are the most recent developments in this field?",
+              "What are the practical applications of these findings?",
+              "What are the limitations or challenges in this area?"
+            ].slice(0, numFollowUpQuestions);
+          }
+
+          // Log the results
+          if (detailedLearnings.length > 0) {
+            log(`Created ${detailedLearnings.length} detailed learnings from JSON`);
+            return {
+              learnings,
+              followUpQuestions,
+              detailedLearnings
+            };
+          } else {
+            log(`Created ${learnings.length} learnings from JSON`);
+            return {
+              learnings,
+              followUpQuestions
+            };
+          }
+        }
+      } catch (e) {
+        // JSON parsing failed, continue with text parsing
+        console.log('JSON parsing failed, falling back to text parsing');
+      }
+    }
+  } catch (e) {
+    // Error in JSON extraction, continue with text parsing
+    console.log('Error in JSON extraction, falling back to text parsing');
+  }
+
   // Split the text into sections
   const sections = text.split(/\n\s*\n+/);
 
@@ -425,37 +498,28 @@ function parseTextLearnings(text: string, insightDetail: number, numLearnings: n
     if (
       trimmedSection.match(/^\s*(?:Learning|\d+\.|Key Finding|Finding)/) ||
       trimmedSection.includes('Title:') ||
-      trimmedSection.match(/^[A-Z][^\n.]+:/) // Starts with capitalized word followed by colon
+      trimmedSection.match(/^[A-Z][^\n.]+:/) || // Starts with capitalized word followed by colon
+      trimmedSection.match(/"title"\s*:\s*"[^"]+"/) // Contains a JSON-like title field
     ) {
       // For higher insight detail, try to parse as detailed learning
       if (insightDetail >= 5) {
-        const titleMatch = trimmedSection.match(/(?:Title|Learning \d+|Key Finding \d+):?\s*([^\n]+)/);
-        const contentMatch = trimmedSection.match(/(?:Content|Description|Details):?\s*([\s\S]+?)(?=(?:Sources|Key Points|References)|$)/i);
-        const sourcesMatch = trimmedSection.match(/(?:Sources|References):?\s*([\s\S]+?)(?=(?:Key Points)|$)/i);
-        const keyPointsMatch = trimmedSection.match(/(?:Key Points|Main Points):?\s*([\s\S]+?)$/i);
+        // Try to extract title and content from JSON-like format
+        const jsonTitleMatch = trimmedSection.match(/"title"\s*:\s*"([^"]+)"/);
+        const jsonContentMatch = trimmedSection.match(/"content"\s*:\s*"([^"]+)"/);
 
-        if (titleMatch) {
-          const title = titleMatch[1].trim();
-          const content = contentMatch ? contentMatch[1].trim() : trimmedSection;
+        if (jsonTitleMatch && jsonContentMatch) {
+          const title = jsonTitleMatch[1].trim();
+          const content = jsonContentMatch[1].trim();
 
           // Extract sources if available
           let sources: string[] = [];
-          if (sourcesMatch) {
-            const sourcesText = sourcesMatch[1].trim();
+          const jsonSourcesMatch = trimmedSection.match(/"sources"\s*:\s*\[([^\]]+)\]/);
+          if (jsonSourcesMatch) {
+            const sourcesText = jsonSourcesMatch[1].trim();
             sources = sourcesText
-              .split(/\n|,|;/)
-              .map(s => s.trim())
+              .split(/,/)
+              .map(s => s.trim().replace(/^"|"$/g, ''))
               .filter(s => s.length > 0);
-          }
-
-          // Extract key points if available
-          let keyPoints: string[] = [];
-          if (keyPointsMatch) {
-            const keyPointsText = keyPointsMatch[1].trim();
-            keyPoints = keyPointsText
-              .split(/\n|•|-|\*/)
-              .map(p => p.trim())
-              .filter(p => p.length > 0);
           }
 
           // Add to detailed learnings
@@ -463,14 +527,56 @@ function parseTextLearnings(text: string, insightDetail: number, numLearnings: n
             title,
             content,
             sources,
-            keyPoints: keyPoints.length > 0 ? keyPoints : ["Key points not explicitly provided"]
+            keyPoints: ["Key points not explicitly provided"]
           });
 
           // Also add to simple learnings
           learnings.push(`${title}\n\n${content}`);
         } else {
-          // Fallback to treating as simple learning
-          learnings.push(trimmedSection);
+          // Try regular text format
+          const titleMatch = trimmedSection.match(/(?:Title|Learning \d+|Key Finding \d+):?\s*([^\n]+)/);
+          const contentMatch = trimmedSection.match(/(?:Content|Description|Details):?\s*([\s\S]+?)(?=(?:Sources|Key Points|References)|$)/i);
+          const sourcesMatch = trimmedSection.match(/(?:Sources|References):?\s*([\s\S]+?)(?=(?:Key Points)|$)/i);
+          const keyPointsMatch = trimmedSection.match(/(?:Key Points|Main Points):?\s*([\s\S]+?)$/i);
+
+          if (titleMatch) {
+            const title = titleMatch[1].trim();
+            const content = contentMatch ? contentMatch[1].trim() : trimmedSection;
+
+            // Extract sources if available
+            let sources: string[] = [];
+            if (sourcesMatch) {
+              const sourcesText = sourcesMatch[1].trim();
+              sources = sourcesText
+                .split(/\n|,|;/)
+                .map(s => s.trim())
+                .filter(s => s.length > 0);
+            }
+
+            // Extract key points if available
+            let keyPoints: string[] = [];
+            if (keyPointsMatch) {
+              const keyPointsText = keyPointsMatch[1].trim();
+              keyPoints = keyPointsText
+                .split(/\n|•|-|\*/)
+                .map(p => p.trim())
+                .filter(p => p.length > 0);
+            }
+
+            // Add to detailed learnings
+            detailedLearnings.push({
+              title,
+              content,
+              sources,
+              keyPoints: keyPoints.length > 0 ? keyPoints : ["Key points not explicitly provided"]
+            });
+
+            // Also add to simple learnings
+            learnings.push(`${title}\n\n${content}`);
+          } else {
+            // Fallback to treating as simple learning
+            learnings.push(trimmedSection);
+          }
         }
       } else {
         // For lower insight detail, just add as simple learning
