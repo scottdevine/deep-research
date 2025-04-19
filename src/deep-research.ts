@@ -58,20 +58,20 @@ function calculateTokenLimit(insightDetail: number): number {
 // Helper function to calculate report token limit based on insight detail
 // Reports need more tokens than individual learnings
 function calculateReportTokenLimit(insightDetail: number): number {
-  // Scale more conservatively to avoid model limitations
-  // Level 1: ~2000 tokens (concise report)
-  // Level 5: ~6000 tokens (detailed report)
-  // Level 10: ~12000 tokens (comprehensive report)
+  // Scale more aggressively to ensure detailed reports
+  // Level 1: ~4000 tokens (concise report, ~3000 words)
+  // Level 5: ~12000 tokens (detailed report, ~9000 words)
+  // Level 10: ~24000 tokens (comprehensive report, ~18000 words)
 
   if (insightDetail <= 3) {
-    // 2000-4000 tokens for levels 1-3
-    return 2000 + (insightDetail - 1) * 1000;
+    // 4000-8000 tokens for levels 1-3
+    return 4000 + (insightDetail - 1) * 2000;
   } else if (insightDetail <= 7) {
-    // 4000-8000 tokens for levels 4-7
-    return 4000 + (insightDetail - 4) * 1000;
+    // 8000-16000 tokens for levels 4-7
+    return 8000 + (insightDetail - 4) * 2000;
   } else {
-    // 8000-12000 tokens for levels 8-10
-    return 8000 + (insightDetail - 8) * 1333;
+    // 16000-24000 tokens for levels 8-10
+    return 16000 + (insightDetail - 8) * 2667;
   }
 }
 
@@ -97,10 +97,10 @@ function getDetailLevelDescription(insightDetail: number): string {
 
 // Helper function to get report length based on insight detail
 function getReportLength(insightDetail: number): string {
-  if (insightDetail >= 8) return "15-25 pages";
-  if (insightDetail >= 5) return "10-15 pages";
-  if (insightDetail >= 3) return "5-10 pages";
-  return "3-5 pages";
+  if (insightDetail >= 8) return "30-50 pages (15,000+ words)";
+  if (insightDetail >= 5) return "15-30 pages (6,000-15,000 words)";
+  if (insightDetail >= 3) return "10-15 pages (3,000-6,000 words)";
+  return "5-10 pages (2,000-3,000 words)";
 }
 
 // increase this if you have higher API rate limits
@@ -349,17 +349,24 @@ export async function writeFinalReport({
   // Calculate the appropriate token limit for the report
   const reportTokenLimit = calculateReportTokenLimit(insightDetail);
 
+  // Log the token limit for debugging
+  console.log(`Generating report with token limit: ${reportTokenLimit} for insight detail: ${insightDetail}`);
+
   // Generate the final report
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
     prompt: trimPrompt(reportPrompt),
     max_tokens: reportTokenLimit, // Set max tokens based on insight detail
-    abortSignal: AbortSignal.timeout(300_000), // Longer timeout for detailed reports
+    abortSignal: AbortSignal.timeout(600_000), // Much longer timeout (10 minutes) for detailed reports
     schema: z.object({
-      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations`),
+      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive and meet the minimum word count requirements.`),
     }),
   });
+
+  // Log the approximate word count for debugging
+  const wordCount = res.object.reportMarkdown.split(/\s+/).length;
+  console.log(`Generated report with approximately ${wordCount} words`);
 
   // Add references section
   const referencesSection = createReferencesSection(webSources, pubmedSources);
@@ -379,40 +386,43 @@ function createReportPrompt(
   let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
 
   if (insightDetail >= 7) {
-    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
+    // For high detail, aim for 10,000+ words
     promptTemplate += `
     Your report MUST:
-    1. Be detailed and comprehensive (${reportLength} of content, approximately ${wordCount} words)
-    2. Include ALL the learnings from the research
+    1. Be EXTREMELY detailed and comprehensive (${reportLength} of content, MINIMUM 10,000 words)
+    2. Include ALL the learnings from the research in great detail
     3. Be well-structured with clear sections, subsections, and a logical flow
-    4. Include an executive summary at the beginning
+    4. Include a detailed executive summary at the beginning
     5. Provide in-depth analysis that builds upon the detailed learnings
     6. Cover multiple perspectives and approaches
     7. Discuss implications, applications, and future directions
     8. Maintain academic rigor throughout
-    9. IMPORTANT: The report should be detailed and substantial (${wordCount}+ words)
+    9. CRITICAL: The report MUST be at least 10,000 words. This is a firm requirement.
+    10. Expand each section with substantial detail, examples, and analysis
     `;
   } else if (insightDetail >= 4) {
-    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
+    // For medium detail, aim for 6,000-8,000 words
     promptTemplate += `
-    Your report should:
-    1. Be detailed and thorough (${reportLength} of content, approximately ${wordCount} words)
-    2. Incorporate the key information from the learnings
-    3. Have a clear structure with appropriate sections
-    4. Include an executive summary
-    5. Provide analysis and insights
+    Your report MUST:
+    1. Be detailed and thorough (${reportLength} of content, MINIMUM 6,000 words)
+    2. Incorporate ALL the key information from the learnings
+    3. Have a clear structure with appropriate sections and subsections
+    4. Include a comprehensive executive summary
+    5. Provide substantial analysis and insights for each topic
     6. Consider different perspectives where relevant
-    7. IMPORTANT: The report should be detailed and substantial (${wordCount}+ words)
+    7. CRITICAL: The report MUST be at least 6,000 words. This is a firm requirement.
+    8. Expand each section with sufficient detail, examples, and analysis
     `;
   } else {
-    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
+    // For low detail, aim for 3,000-4,000 words
     promptTemplate += `
-    Your report should:
-    1. Be clear and concise (${reportLength} of content, approximately ${wordCount} words)
-    2. Capture the essential information from the learnings
-    3. Have a logical structure
-    4. Focus on the most important points
-    5. IMPORTANT: The report should be concise but complete (${wordCount}+ words)
+    Your report MUST:
+    1. Be clear and well-organized (${reportLength} of content, MINIMUM 3,000 words)
+    2. Capture all the essential information from the learnings
+    3. Have a logical structure with clear sections
+    4. Focus on the most important points while providing adequate detail
+    5. CRITICAL: The report MUST be at least 3,000 words. This is a firm requirement.
+    6. Provide enough detail to make the report informative and useful
     `;
   }
 
