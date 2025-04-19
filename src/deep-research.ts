@@ -329,27 +329,14 @@ async function processSerpResult({
     });
   }
 
+  // Skip the structured output approach entirely and just use text generation
+  // This is more reliable across different models
   try {
-    // Generate the learnings with structured output
-    const res = await generateObject({
-      model: getModel(modelId),
-      abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
-      system: systemPrompt(),
-      prompt: learningPrompt + "\n\nFormat your response as a JSON object with the appropriate fields. Do not wrap your response in markdown code blocks or any other formatting.",
-      max_tokens: tokenLimit * adjustedNumLearnings, // Set max tokens based on insight detail
-      schema,
-    });
-
-    return processLearningResults(res.object, insightDetail);
-  } catch (error) {
-    console.log('Error generating structured learnings, falling back to text parsing:', error);
-
-    // Fallback to text generation
     const response = await generateText({
       model: getModel(modelId),
       abortSignal: AbortSignal.timeout(180_000),
       system: systemPrompt(),
-      prompt: learningPrompt + "\n\nProvide your response in a clear, structured format with numbered learnings and follow-up questions.",
+      prompt: learningPrompt + "\n\nProvide your response in a clear, structured format with numbered learnings and follow-up questions. Include a title for each learning, followed by detailed content, and list the sources used for each learning.",
       max_tokens: tokenLimit * adjustedNumLearnings,
     });
 
@@ -359,6 +346,9 @@ async function processSerpResult({
 
     // Parse the text response
     return parseTextLearnings(response.content, insightDetail, adjustedNumLearnings, numFollowUpQuestions);
+  } catch (error) {
+    console.error('Error generating learnings:', error);
+    throw new Error('Failed to generate learnings');
   }
 
 }
