@@ -243,23 +243,37 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
               {isLoadingModels ? (
                 <option disabled>Loading models...</option>
               ) : (
-                // Group models by provider
+                // Group models by provider and filter out free models (they often have limitations)
                 Object.entries(
-                  models.reduce((acc, model) => {
-                    const provider = model.provider || 'Other';
-                    if (!acc[provider]) acc[provider] = [];
-                    acc[provider].push(model);
-                    return acc;
-                  }, {} as Record<string, Model[]>)
-                ).map(([provider, providerModels]) => (
+                  models
+                    .filter(model => !model.id.includes(':free')) // Filter out free models
+                    .reduce((acc, model) => {
+                      const provider = model.provider || 'Other';
+                      if (!acc[provider]) acc[provider] = [];
+                      acc[provider].push(model);
+                      return acc;
+                    }, {} as Record<string, Model[]>)
+                )
+                .sort(([a], [b]) => a.localeCompare(b)) // Sort providers alphabetically
+                .map(([provider, providerModels]) => (
                   <optgroup key={provider} label={provider}>
                     {providerModels
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.name} {model.context_length ? `(${Math.round(model.context_length / 1000)}k ctx)` : ''}
-                        </option>
-                      ))}
+                      .sort((a, b) => {
+                        // Sort by context length (descending) then by name
+                        if (a.context_length !== b.context_length) {
+                          return (b.context_length || 0) - (a.context_length || 0);
+                        }
+                        return a.name.localeCompare(b.name);
+                      })
+                      .map((model) => {
+                        // Format the display name
+                        const contextSize = model.context_length ? `(${Math.round(model.context_length / 1000)}k)` : '';
+                        return (
+                          <option key={model.id} value={model.id} title={model.description || ''}>
+                            {model.name} {contextSize}
+                          </option>
+                        );
+                      })}
                   </optgroup>
                 ))
               )}

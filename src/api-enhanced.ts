@@ -530,17 +530,24 @@ app.get('/api/models', async (req, res) => {
 
     // Format the models data for the frontend
     const formattedModels = data.data.map((model: any) => {
-      // Handle different provider formats
-      let providerName = 'Unknown';
-      if (typeof model.provider === 'string') {
-        providerName = model.provider;
-      } else if (model.provider && typeof model.provider === 'object') {
-        providerName = model.provider.name || 'Unknown';
+      // Extract provider from model ID if not explicitly provided
+      const idParts = model.id.split('/');
+      let providerName = idParts.length > 1 ? idParts[0] : 'Unknown';
+
+      // Capitalize provider name
+      providerName = providerName.charAt(0).toUpperCase() + providerName.slice(1);
+
+      // Format model name
+      let modelName = model.name || idParts[idParts.length - 1];
+
+      // Remove provider prefix from name if it exists
+      if (modelName.toLowerCase().startsWith(providerName.toLowerCase() + ':')) {
+        modelName = modelName.substring(providerName.length + 1).trim();
       }
 
       return {
         id: model.id,
-        name: model.name || model.id.split('/').pop(),
+        name: modelName,
         provider: providerName,
         description: model.description || '',
         context_length: model.context_length || 0,
