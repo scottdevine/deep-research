@@ -38,18 +38,32 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
     followUpAnswers: [],
   });
   const [followUpQuestions, setFollowUpQuestions] = useState<FollowUpQuestion[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState<boolean>(false);
 
-  const handleQuerySubmit = async (query: string) => {
+  const handleQuerySubmit = (query: string) => {
     setFormData({ ...formData, query });
+    setStep(2);
+  };
+
+  const handleParametersSubmit = async (parameters: Partial<FormData>) => {
+    // Update form data with the selected parameters
+    const updatedFormData = { ...formData, ...parameters };
+    setFormData(updatedFormData);
+
+    // Show loading state
+    setIsLoadingQuestions(true);
 
     try {
-      // Fetch follow-up questions from the API
+      // Now that we have the model ID, fetch follow-up questions from the API
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3051'}/api/questions/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({
+          query: updatedFormData.query,
+          modelId: updatedFormData.modelId // Pass the selected model ID
+        }),
       });
 
       if (!response.ok) {
@@ -73,14 +87,13 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
         { id: '2', question: 'Would you like to focus exclusively on pharmacological interventions or also include non-pharmacological therapies?' },
         { id: '3', question: 'Should the research scope be global or tailored to specific geographical regions or clinical guidelines?' },
       ]);
+    } finally {
+      // Hide loading state
+      setIsLoadingQuestions(false);
+
+      // Move to the follow-up questions step
+      setStep(3);
     }
-
-    setStep(2);
-  };
-
-  const handleParametersSubmit = (parameters: Partial<FormData>) => {
-    setFormData({ ...formData, ...parameters });
-    setStep(3);
   };
 
   const handleFollowUpSubmit = (answers: string[]) => {
@@ -108,6 +121,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
             meshRestrictiveness: formData.meshRestrictiveness,
           }}
           onSubmit={handleParametersSubmit}
+          isLoading={isLoadingQuestions}
         />
       )}
 

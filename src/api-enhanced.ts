@@ -57,15 +57,17 @@ function log(...args: any[]) {
 // API endpoint to generate follow-up questions
 app.post('/api/questions/generate', async (req: Request, res: Response) => {
   try {
-    const { query } = req.body;
+    const { query, modelId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' });
     }
 
+    // Pass the modelId to the generateFeedback function
     const questions = await generateFeedback({
       query,
       numQuestions: 3,
+      modelId, // Pass the selected model ID
     });
 
     return res.json({ questions });
