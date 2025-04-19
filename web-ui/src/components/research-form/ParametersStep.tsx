@@ -3,11 +3,15 @@
 import { useState } from 'react';
 import { FormData } from './ResearchForm';
 
+// Import available models
+import { AVAILABLE_MODELS } from '../../../../src/ai/providers';
+
 interface ParametersStepProps {
   initialParameters: {
     breadth: number;
     depth: number;
     insightDetail: number; // Add the insightDetail parameter
+    modelId?: string; // Add the model parameter
     outputType: 'report' | 'answer';
     meshRestrictiveness: 'low' | 'medium' | 'high';
   };
@@ -192,6 +196,30 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
                 </span>
               </label>
             </div>
+          </div>
+        </div>
+
+        <div>
+          <label htmlFor="modelId" className="block text-sm font-medium text-gray-700">
+            AI Model
+          </label>
+          <div className="mt-1">
+            <select
+              id="modelId"
+              value={parameters.modelId || ''}
+              onChange={(e) => setParameters({ ...parameters, modelId: e.target.value })}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+            >
+              <option value="">Default (Claude 3 Opus)</option>
+              {AVAILABLE_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.name} ({model.provider})
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Select a model to use for generating the report. More powerful models may produce better results but may take longer.
+            </p>
           </div>
         </div>
 

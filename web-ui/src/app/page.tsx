@@ -68,6 +68,7 @@ export default function Home() {
           breadth: formData.breadth,
           depth: formData.depth,
           insightDetail: formData.insightDetail, // Add the insightDetail parameter
+          modelId: formData.modelId, // Add the model parameter
           meshRestrictiveness: formData.meshRestrictiveness,
           outputType: formData.outputType,
           // Combine initial query with follow-up Q&A

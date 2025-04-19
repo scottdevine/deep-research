@@ -25,7 +25,8 @@ interface ResearchSession {
   breadth: number;
   depth: number;
   meshRestrictiveness: MeshRestrictiveness;
-  insightDetail: number; // New parameter for controlling learning detail
+  insightDetail: number; // Parameter for controlling learning detail
+  modelId?: string; // Parameter for selecting the model
   outputType: 'report' | 'answer';
   status: 'pending' | 'in-progress' | 'completed' | 'failed';
   progress: {
@@ -86,6 +87,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
       breadth = 4,
       meshRestrictiveness = 'medium',
       insightDetail = 5, // Default to medium detail level
+      modelId, // Model ID for OpenRouter
       outputType = 'report',
       combinedQuery = ''
     } = req.body;
@@ -111,6 +113,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
       depth,
       meshRestrictiveness: meshRestrictivenessEnum,
       insightDetail, // Add the insightDetail parameter
+      modelId, // Add the model parameter
       outputType,
       status: 'pending',
       progress: {
@@ -195,12 +198,14 @@ app.post('/api/research', async (req: Request, res: Response) => {
             learnings,
             visitedUrls,
             pubMedArticles,
-            insightDetail // Pass the insightDetail parameter
+            insightDetail, // Pass the insightDetail parameter
+            modelId // Pass the model parameter
           });
         } else {
           answer = await writeFinalAnswer({
             prompt: query,
-            learnings
+            learnings,
+            modelId // Pass the model parameter
           });
         }
 

@@ -306,12 +306,14 @@ export async function writeFinalReport({
   visitedUrls,
   pubMedArticles = [],
   insightDetail = 5,
+  modelId,
 }: {
   prompt: string;
   learnings: string[];
   visitedUrls: string[];
   pubMedArticles?: PubMedArticle[];
   insightDetail?: number;
+  modelId?: string;
 }) {
   // Determine report length based on insight detail
   const reportLength = getReportLength(insightDetail);
@@ -351,7 +353,7 @@ export async function writeFinalReport({
 
   // Generate the final report without token limits
   const res = await generateObject({
-    model: getModel(),
+    model: getModel(modelId),
     system: systemPrompt(),
     prompt: trimPrompt(reportPrompt),
     // No max_tokens parameter - let the model use as many tokens as needed based on the content
@@ -451,16 +453,18 @@ function createReferencesSection(webSources: any[], pubmedSources: any[]): strin
 export async function writeFinalAnswer({
   prompt,
   learnings,
+  modelId,
 }: {
   prompt: string;
   learnings: string[];
+  modelId?: string;
 }) {
   const learningsString = learnings
     .map(learning => `<learning>\n${learning}\n</learning>`)
     .join('\n');
 
   const res = await generateObject({
-    model: getModel(),
+    model: getModel(modelId),
     system: systemPrompt(),
     prompt: trimPrompt(
       `Given the following prompt from the user, write a final answer on the topic using the learnings from research. Follow the format specified in the prompt. Do not yap or babble or include any other text than the answer besides the format specified in the prompt. Keep the answer as concise as possible - usually it should be just a few words or maximum a sentence. Try to follow the format specified in the prompt (for example, if the prompt is using Latex, the answer should be in Latex. If the prompt gives multiple answer choices, the answer should be one of the choices).\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from research on the topic that you can use to help answer the prompt:\n\n<learnings>\n${learningsString}\n</learnings>`,

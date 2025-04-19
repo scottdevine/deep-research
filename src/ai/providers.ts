@@ -23,6 +23,14 @@ const fireworks = process.env.FIREWORKS_KEY
     })
   : undefined;
 
+// OpenRouter provider
+const openrouter = process.env.OPENROUTER_KEY
+  ? createOpenAI({
+      apiKey: process.env.OPENROUTER_KEY,
+      baseURL: 'https://openrouter.ai/api/v1',
+    })
+  : undefined;
+
 const customModel = process.env.CUSTOM_MODEL
   ? openai?.(process.env.CUSTOM_MODEL, {
       structuredOutputs: true,
@@ -30,7 +38,6 @@ const customModel = process.env.CUSTOM_MODEL
   : undefined;
 
 // Models
-
 const o3MiniModel = openai?.('o3-mini', {
   reasoningEffort: 'medium',
   structuredOutputs: true,
@@ -45,11 +52,56 @@ const deepSeekR1Model = fireworks
     })
   : undefined;
 
-export function getModel(): LanguageModelV1 {
+// Available OpenRouter models
+export const AVAILABLE_MODELS = [
+  { id: 'anthropic/claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic' },
+  { id: 'anthropic/claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'Anthropic' },
+  { id: 'anthropic/claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic' },
+  { id: 'meta-llama/llama-3-70b-instruct', name: 'Llama 3 70B', provider: 'Meta' },
+  { id: 'meta-llama/llama-3-8b-instruct', name: 'Llama 3 8B', provider: 'Meta' },
+  { id: 'google/gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro', provider: 'Google' },
+  { id: 'google/gemini-1.0-pro-latest', name: 'Gemini 1.0 Pro', provider: 'Google' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
+  { id: 'openai/gpt-4', name: 'GPT-4', provider: 'OpenAI' },
+  { id: 'openai/gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'OpenAI' },
+  { id: 'mistralai/mistral-large-latest', name: 'Mistral Large', provider: 'Mistral AI' },
+  { id: 'mistralai/mistral-medium-latest', name: 'Mistral Medium', provider: 'Mistral AI' },
+  { id: 'mistralai/mistral-small-latest', name: 'Mistral Small', provider: 'Mistral AI' },
+];
+
+// Default model to use if none is specified
+const DEFAULT_MODEL = 'anthropic/claude-3-opus-20240229';
+
+// Create a model instance from OpenRouter
+function createOpenRouterModel(modelId: string): LanguageModelV1 | undefined {
+  if (!openrouter) return undefined;
+
+  return openrouter(modelId, {
+    reasoningEffort: 'high',
+    structuredOutputs: true,
+  });
+}
+
+export function getModel(modelId?: string): LanguageModelV1 {
+  // If a specific model ID is provided, try to use OpenRouter
+  if (modelId && openrouter) {
+    const openRouterModel = createOpenRouterModel(modelId);
+    if (openRouterModel) return openRouterModel;
+  }
+
+  // If OpenRouter is available but no specific model is requested, use the default
+  if (openrouter && !modelId) {
+    const defaultOpenRouterModel = createOpenRouterModel(DEFAULT_MODEL);
+    if (defaultOpenRouterModel) return defaultOpenRouterModel;
+  }
+
+  // Fall back to custom model if specified
   if (customModel) {
     return customModel;
   }
 
+  // Fall back to other available models
   const model = deepSeekR1Model ?? o3MiniModel;
   if (!model) {
     throw new Error('No model found');
