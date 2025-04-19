@@ -390,9 +390,12 @@ function parseTextLearnings(text: string, insightDetail: number, numLearnings: n
   // First try to extract JSON from the text
   try {
     // Check if the text contains a JSON object
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const jsonText = jsonMatch[0];
+    // Remove any text before the JSON object
+    const jsonStartIndex = text.indexOf('{');
+    const jsonEndIndex = text.lastIndexOf('}');
+
+    if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+      const jsonText = text.substring(jsonStartIndex, jsonEndIndex + 1);
       try {
         // Try to parse the JSON
         const jsonObj = JSON.parse(jsonText);
@@ -452,12 +455,12 @@ function parseTextLearnings(text: string, insightDetail: number, numLearnings: n
         }
       } catch (e) {
         // JSON parsing failed, continue with text parsing
-        console.log('JSON parsing failed, falling back to text parsing');
+        console.log('JSON parsing failed, falling back to text parsing:', e);
       }
     }
   } catch (e) {
     // Error in JSON extraction, continue with text parsing
-    console.log('Error in JSON extraction, falling back to text parsing');
+    console.log('Error in JSON extraction, falling back to text parsing:', e);
   }
 
   // Split the text into sections
