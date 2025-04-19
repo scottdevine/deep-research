@@ -9,6 +9,7 @@ export type FormData = {
   query: string;
   breadth: number;
   depth: number;
+  insightDetail: number; // Add the insightDetail parameter
   outputType: 'report' | 'answer';
   meshRestrictiveness: 'low' | 'medium' | 'high';
   followUpAnswers: string[];
@@ -29,6 +30,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
     query: '',
     breadth: 4,
     depth: 2,
+    insightDetail: 5, // Add the insightDetail parameter with default value 5
     outputType: 'report',
     meshRestrictiveness: 'medium',
     followUpAnswers: [],
@@ -98,6 +100,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
           initialParameters={{
             breadth: formData.breadth,
             depth: formData.depth,
+            insightDetail: formData.insightDetail, // Add the insightDetail parameter
             outputType: formData.outputType,
             meshRestrictiveness: formData.meshRestrictiveness,
           }}

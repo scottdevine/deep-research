@@ -181,7 +181,7 @@ async function processSerpResult({
         title: z.string().describe("A descriptive title for this learning"),
         content: z.string().describe("The detailed content exploring this learning"),
         sources: z.array(z.string()).describe("References to specific sources used"),
-        keyPoints: z.array(z.string()).optional().describe("Key points from this learning")
+        keyPoints: z.array(z.string()).describe("Key points from this learning")
       })).describe(`List of ${detailLevel} learnings, max of ${adjustedNumLearnings}`),
       followUpQuestions: z.array(z.string()).describe(
         `List of follow-up questions to research the topic further, max of ${numFollowUpQuestions}`,
