@@ -25,6 +25,7 @@ interface ResearchSession {
   breadth: number;
   depth: number;
   meshRestrictiveness: MeshRestrictiveness;
+  insightDetail: number; // New parameter for controlling learning detail
   outputType: 'report' | 'answer';
   status: 'pending' | 'in-progress' | 'completed' | 'failed';
   progress: {
@@ -84,6 +85,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
       depth = 2,
       breadth = 4,
       meshRestrictiveness = 'medium',
+      insightDetail = 5, // Default to medium detail level
       outputType = 'report',
       combinedQuery = ''
     } = req.body;
@@ -108,6 +110,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
       breadth,
       depth,
       meshRestrictiveness: meshRestrictivenessEnum,
+      insightDetail, // Add the insightDetail parameter
       outputType,
       status: 'pending',
       progress: {
@@ -150,6 +153,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
           breadth,
           depth,
           meshRestrictiveness: meshRestrictivenessEnum,
+          insightDetail, // Pass the insightDetail parameter
           onProgress: (progress) => {
             // Update progress based on the current stage
             if (progress.currentDepth === depth) {
@@ -190,7 +194,8 @@ app.post('/api/research', async (req: Request, res: Response) => {
             prompt: query,
             learnings,
             visitedUrls,
-            pubMedArticles
+            pubMedArticles,
+            insightDetail // Pass the insightDetail parameter
           });
         } else {
           answer = await writeFinalAnswer({

@@ -9,6 +9,7 @@ export type FormData = {
   query: string;
   breadth: number;
   depth: number;
+  insightDetail: number; // Add the insightDetail parameter
   outputType: 'report' | 'answer';
   meshRestrictiveness: 'low' | 'medium' | 'high';
   followUpAnswers: string[];
@@ -29,6 +30,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
     query: '',
     breadth: 4,
     depth: 2,
+    insightDetail: 5, // Add the insightDetail parameter with default value 5
     outputType: 'report',
     meshRestrictiveness: 'medium',
     followUpAnswers: [],
@@ -37,7 +39,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
 
   const handleQuerySubmit = async (query: string) => {
     setFormData({ ...formData, query });
-    
+
     // In a real implementation, we would fetch follow-up questions from the API
     // For now, we'll use some sample questions
     setFollowUpQuestions([
@@ -45,7 +47,7 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
       { id: '2', question: 'Would you like to focus exclusively on pharmacological interventions or also include non-pharmacological therapies?' },
       { id: '3', question: 'Should the research scope be global or tailored to specific geographical regions or clinical guidelines?' },
     ]);
-    
+
     setStep(2);
   };
 
@@ -62,32 +64,33 @@ export default function ResearchForm({ onSubmit }: ResearchFormProps) {
   return (
     <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       {step === 1 && (
-        <QueryStep 
-          initialQuery={formData.query} 
-          onSubmit={handleQuerySubmit} 
+        <QueryStep
+          initialQuery={formData.query}
+          onSubmit={handleQuerySubmit}
         />
       )}
-      
+
       {step === 2 && (
-        <ParametersStep 
+        <ParametersStep
           initialParameters={{
             breadth: formData.breadth,
             depth: formData.depth,
+            insightDetail: formData.insightDetail, // Add the insightDetail parameter
             outputType: formData.outputType,
             meshRestrictiveness: formData.meshRestrictiveness,
           }}
           onSubmit={handleParametersSubmit}
         />
       )}
-      
+
       {step === 3 && (
-        <FollowUpStep 
+        <FollowUpStep
           questions={followUpQuestions}
           initialAnswers={formData.followUpAnswers}
           onSubmit={handleFollowUpSubmit}
         />
       )}
-      
+
       <div className="mt-6 flex justify-between">
         <div className="text-sm text-gray-500">
           Step {step} of 3

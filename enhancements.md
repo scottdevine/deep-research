@@ -1,5 +1,17 @@
 # Enhancement Ideas for Deep Research Tool
 
+## Research Report Enhancements
+
+1. **Robust Detailed Learnings with Insight Detail Parameter**:
+   - Implement an "Insight Detail" parameter (scale 1-10) to control the depth and comprehensiveness of research insights
+   - Transform the learning extraction process to generate detailed, multi-page learnings instead of concise summaries
+   - Scale token limits based on the Insight Detail parameter (1000-10000 tokens per learning)
+   - Adjust the number of learnings extracted based on the detail level
+   - Enhance the report generation process to create comprehensive reports (3-50 pages) based on detailed learnings
+   - Structure detailed learnings with titles, content, sources, and key points
+   - Provide appropriate prompting based on the selected detail level
+   - Create a foundation of 100-150 pages of detailed content for high-detail reports
+
 ## PubMed Integration Enhancements
 
 1. **Fallback Mechanism**:

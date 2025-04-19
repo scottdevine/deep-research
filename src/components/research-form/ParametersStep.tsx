@@ -7,6 +7,7 @@ interface ParametersStepProps {
   initialParameters: {
     breadth: number;
     depth: number;
+    insightDetail: number; // Add the insightDetail parameter
     outputType: 'report' | 'answer';
     meshRestrictiveness: 'low' | 'medium' | 'high';
   };
@@ -29,7 +30,7 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
           Configure how broad and deep your research should be.
         </p>
       </div>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
           <label htmlFor="breadth" className="block text-sm font-medium text-gray-700">
@@ -53,7 +54,7 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
             Recommended: 2-10, Default: 4. Higher values will explore more topics but take longer.
           </p>
         </div>
-        
+
         <div>
           <label htmlFor="depth" className="block text-sm font-medium text-gray-700">
             Research Depth (how deep the search should go)
@@ -76,7 +77,30 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
             Recommended: 1-5, Default: 2. Higher values will explore topics in more detail but take longer.
           </p>
         </div>
-        
+
+        <div>
+          <label htmlFor="insightDetail" className="block text-sm font-medium text-gray-700">
+            Insight Detail (how comprehensive the learnings should be)
+          </label>
+          <div className="mt-1 flex items-center space-x-4">
+            <input
+              id="insightDetail"
+              type="range"
+              min="1"
+              max="10"
+              value={parameters.insightDetail}
+              onChange={(e) => setParameters({ ...parameters, insightDetail: parseInt(e.target.value) })}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            />
+            <span className="text-sm font-medium text-gray-900 w-8 text-center">
+              {parameters.insightDetail}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            Recommended: 1-10, Default: 5. Higher values will produce more detailed and comprehensive insights and reports.
+          </p>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700">Output Type</label>
           <div className="mt-2 space-y-2">
@@ -114,7 +138,7 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
             </div>
           </div>
         </div>
-        
+
         <div>
           <label className="block text-sm font-medium text-gray-700">
             PubMed MeSH Term Restrictiveness
@@ -170,7 +194,7 @@ export default function ParametersStep({ initialParameters, onSubmit }: Paramete
             </div>
           </div>
         </div>
-        
+
         <div className="flex justify-end">
           <button
             type="submit"

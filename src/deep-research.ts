@@ -22,11 +22,66 @@ export type ResearchProgress = {
   completedQueries: number;
 };
 
+// Interface for detailed learning structure
+export interface DetailedLearning {
+  title: string;           // A descriptive title for the learning
+  content: string;         // The detailed content of the learning
+  sources: string[];       // References to sources used
+  keyPoints?: string[];    // Optional list of key points
+}
+
 type ResearchResult = {
   learnings: string[];
   visitedUrls: string[];
   pubMedArticles?: PubMedArticle[];
 };
+
+// Helper function to calculate token limit based on insight detail
+function calculateTokenLimit(insightDetail: number): number {
+  // Scale exponentially to give more dramatic effect at higher levels
+  // Level 1: ~1000 tokens (concise)
+  // Level 5: ~4000 tokens (detailed)
+  // Level 10: ~10000 tokens (comprehensive)
+
+  if (insightDetail <= 3) {
+    // 1000-2000 tokens for levels 1-3
+    return 1000 + (insightDetail - 1) * 500;
+  } else if (insightDetail <= 7) {
+    // 2000-6000 tokens for levels 4-7
+    return 2000 + (insightDetail - 4) * 1000;
+  } else {
+    // 6000-10000 tokens for levels 8-10
+    return 6000 + (insightDetail - 8) * 1333;
+  }
+}
+
+// Helper function to calculate the appropriate number of learnings based on insight detail
+function calculateLearningsCount(insightDetail: number, breadth: number): number {
+  // For higher detail levels, we need fewer learnings to avoid context window issues
+  if (insightDetail >= 8) {
+    return Math.max(2, Math.min(3, breadth - 2)); // 2-3 learnings for high detail
+  } else if (insightDetail >= 5) {
+    return Math.max(3, Math.min(5, breadth - 1)); // 3-5 learnings for medium detail
+  } else {
+    return Math.max(5, Math.min(8, breadth));     // 5-8 learnings for low detail
+  }
+}
+
+// Helper function to get detail level description
+function getDetailLevelDescription(insightDetail: number): string {
+  if (insightDetail >= 8) return "comprehensive and in-depth";
+  if (insightDetail >= 5) return "detailed and thorough";
+  if (insightDetail >= 3) return "moderately detailed";
+  return "concise but informative";
+}
+
+// Helper function to get report length based on insight detail
+function getReportLength(insightDetail: number): string {
+  if (insightDetail >= 8) return "30-50 pages";
+  if (insightDetail >= 5) return "15-30 pages";
+  if (insightDetail >= 3) return "7-15 pages";
+  return "3-7 pages";
+}
 
 // increase this if you have higher API rate limits
 const ConcurrencyLimit = Number(process.env.FIRECRAWL_CONCURRENCY) || 2;
@@ -86,13 +141,21 @@ async function processSerpResult({
   numLearnings = 5,
   numFollowUpQuestions = 3,
   pubMedArticles = [],
+  breadth = 5,
+  insightDetail = 5,
 }: {
   query: string;
   result: SearchResponse;
   numLearnings?: number;
   numFollowUpQuestions?: number;
   pubMedArticles?: PubMedArticle[];
+  breadth?: number;
+  insightDetail?: number;
 }) {
+  // Calculate parameters based on insight detail
+  const tokenLimit = calculateTokenLimit(insightDetail);
+  const adjustedNumLearnings = calculateLearningsCount(insightDetail, breadth);
+
   const contents = compact(result.data.map(item => item.markdown)).map(content =>
     trimPrompt(content, 25_000),
   );
@@ -105,27 +168,115 @@ async function processSerpResult({
 
   log(`Ran ${query}, found ${contents.length} contents (including ${pubMedArticles?.length || 0} PubMed articles)`);
 
+  // Create the learning extraction prompt based on insight detail
+  const detailLevel = getDetailLevelDescription(insightDetail);
+  const learningPrompt = createLearningPrompt(query, adjustedNumLearnings, insightDetail, detailLevel, contents);
+
+  // Define the schema based on insight detail level
+  let schema;
+  if (insightDetail >= 5) {
+    // For medium to high detail, use detailed learning structure
+    schema = z.object({
+      detailedLearnings: z.array(z.object({
+        title: z.string().describe("A descriptive title for this learning"),
+        content: z.string().describe("The detailed content exploring this learning"),
+        sources: z.array(z.string()).describe("References to specific sources used"),
+        keyPoints: z.array(z.string()).optional().describe("Key points from this learning")
+      })).describe(`List of ${detailLevel} learnings, max of ${adjustedNumLearnings}`),
+      followUpQuestions: z.array(z.string()).describe(
+        `List of follow-up questions to research the topic further, max of ${numFollowUpQuestions}`,
+      ),
+    });
+  } else {
+    // For low detail, use simple string array for learnings
+    schema = z.object({
+      learnings: z.array(z.string()).describe(`List of ${detailLevel} learnings, max of ${adjustedNumLearnings}`),
+      followUpQuestions: z.array(z.string()).describe(
+        `List of follow-up questions to research the topic further, max of ${numFollowUpQuestions}`,
+      ),
+    });
+  }
+
+  // Generate the learnings
   const res = await generateObject({
     model: getModel(),
-    abortSignal: AbortSignal.timeout(60_000),
+    abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
     system: systemPrompt(),
-    prompt: trimPrompt(
-      `Given the following contents from a SERP search for the query <query>${query}</query>, generate a list of learnings from the contents. Return a maximum of ${numLearnings} learnings, but feel free to return less if the contents are clear. Make sure each learning is unique and not similar to each other. The learnings should be concise and to the point, as detailed and information dense as possible. Make sure to include any entities like people, places, companies, products, things, etc in the learnings, as well as any exact metrics, numbers, or dates. The learnings will be used to research the topic further.\n\n<contents>${contents
-        .map(content => `<content>\n${content}\n</content>`)
-        .join('\n')}</contents>`,
-    ),
-    schema: z.object({
-      learnings: z.array(z.string()).describe(`List of learnings, max of ${numLearnings}`),
-      followUpQuestions: z
-        .array(z.string())
-        .describe(
-          `List of follow-up questions to research the topic further, max of ${numFollowUpQuestions}`,
-        ),
-    }),
+    prompt: learningPrompt,
+    schema,
   });
-  log(`Created ${res.object.learnings.length} learnings`, res.object.learnings);
 
-  return res.object;
+  // Process the result based on insight detail level
+  if (insightDetail >= 5 && 'detailedLearnings' in res.object) {
+    // Convert detailed learnings to simple strings for backward compatibility
+    const simpleLearnings = res.object.detailedLearnings.map(learning => {
+      return `${learning.title}\n\n${learning.content}`;
+    });
+
+    log(`Created ${res.object.detailedLearnings.length} detailed learnings`);
+
+    return {
+      learnings: simpleLearnings,
+      followUpQuestions: res.object.followUpQuestions,
+      detailedLearnings: res.object.detailedLearnings
+    };
+  } else {
+    log(`Created ${res.object.learnings.length} learnings`);
+    return res.object;
+  }
+}
+
+// Helper function to create the appropriate learning prompt
+function createLearningPrompt(query: string, numLearnings: number, insightDetail: number, detailLevel: string, contents: string[]): string {
+  const pagesEstimate = Math.floor(calculateTokenLimit(insightDetail)/800) + "-" + Math.ceil(calculateTokenLimit(insightDetail)/600);
+
+  let promptTemplate = `Given the following contents from a SERP search for the query <query>${query}</query>, generate ${numLearnings} ${detailLevel} learnings.\n\n`;
+
+  if (insightDetail >= 8) {
+    promptTemplate += `
+    Each learning should:
+    1. Have a clear, descriptive title
+    2. Be extremely thorough and comprehensive (${pagesEstimate} pages of content)
+    3. Deeply analyze the topic with multiple perspectives
+    4. Include all relevant facts, figures, statistics, and data points
+    5. Discuss methodologies, limitations, and implications
+    6. Compare and contrast different viewpoints or approaches
+    7. Incorporate specific examples, case studies, or applications
+    8. Cite specific sources for key information
+    9. Be structured with clear sections and logical flow
+    `;
+  } else if (insightDetail >= 5) {
+    promptTemplate += `
+    Each learning should:
+    1. Have a clear, descriptive title
+    2. Be detailed and informative (${pagesEstimate} pages of content)
+    3. Include specific facts, figures, and context
+    4. Provide analysis beyond just summarizing information
+    5. Reference specific sources where appropriate
+    6. Be well-organized with a logical structure
+    `;
+  } else if (insightDetail >= 3) {
+    promptTemplate += `
+    Each learning should:
+    1. Have a clear, descriptive title
+    2. Be moderately detailed (${pagesEstimate} pages of content)
+    3. Capture the important information on the topic
+    4. Include key facts and figures where relevant
+    5. Be focused and well-structured
+    `;
+  } else {
+    promptTemplate += `
+    Each learning should:
+    1. Be concise but informative
+    2. Capture the essential information on the topic
+    3. Include key facts and figures where relevant
+    4. Be focused and to the point
+    `;
+  }
+
+  promptTemplate += `\n\nMake sure each learning is unique and focuses on a different aspect of the topic.\nInclude specific entities, metrics, numbers, and dates where relevant.\nFor each learning, include a list of sources that contributed to that learning.\n\n<contents>${contents.map(content => `<content>\n${content}\n</content>`).join('\n')}</contents>`;
+
+  return trimPrompt(promptTemplate);
 }
 
 export async function writeFinalReport({
@@ -133,12 +284,19 @@ export async function writeFinalReport({
   learnings,
   visitedUrls,
   pubMedArticles = [],
+  insightDetail = 5,
 }: {
   prompt: string;
   learnings: string[];
   visitedUrls: string[];
   pubMedArticles?: PubMedArticle[];
+  insightDetail?: number;
 }) {
+  // Determine report length based on insight detail
+  const reportLength = getReportLength(insightDetail);
+  const detailLevel = getDetailLevelDescription(insightDetail);
+
+  // Convert learnings to a format for the prompt
   const learningsString = learnings
     .map(learning => `<learning>\n${learning}\n</learning>`)
     .join('\n');
@@ -164,18 +322,75 @@ export async function writeFinalReport({
   const allSources = [...webSources, ...pubmedSources];
   const sourcesString = JSON.stringify(allSources);
 
+  // Create the report generation prompt based on insight detail
+  const reportPrompt = createReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
+
+  // Generate the final report
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
-    prompt: trimPrompt(
-      `Given the following prompt from the user, write a COMPREHENSIVE and DETAILED final report on the topic using the learnings from research. This should be an extensive report that thoroughly covers all aspects of the topic.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\nYour report MUST:\n1. Be extremely detailed and comprehensive (minimum 5-7 pages of content)\n2. Include ALL the learnings from the research\n3. Be well-structured with clear sections and subsections\n4. Include an executive summary at the beginning\n5. Provide in-depth analysis, not just summaries\n6. Cover multiple perspectives and approaches\n7. Discuss implications, applications, and future directions\n\nVERY IMPORTANT: For EVERY factual statement in your report, you MUST include a citation to the relevant source. Here are the available sources you can cite:\n\n<sources>${sourcesString}</sources>\n\nCitation format:\n- For web sources: Use [web1], [web2], etc. at the end of the sentence or paragraph containing the information.\n- For PubMed sources: Use [pubmed1], [pubmed2], etc. at the end of the sentence or paragraph containing the information.\n\nYou MUST include at least one citation for every paragraph. If a paragraph contains information from multiple sources, include all relevant citations. If you're unsure which exact source a piece of information came from, cite multiple potential sources.\n\nExample of proper citation:\n"Recent studies have shown that immunotherapy is effective for treating certain types of cancer [web1][pubmed2]. However, the efficacy varies significantly based on cancer type and patient characteristics [pubmed1][web3]."\n\nRemember, this report should be COMPREHENSIVE and EXHAUSTIVE, covering all aspects of the topic in great detail.`,
-    ),
+    prompt: trimPrompt(reportPrompt),
     schema: z.object({
-      reportMarkdown: z.string().describe('Comprehensive and detailed final report on the topic in Markdown with proper citations'),
+      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations`),
     }),
   });
 
-  // Append the sources section to the report with proper formatting
+  // Add references section
+  const referencesSection = createReferencesSection(webSources, pubmedSources);
+
+  return res.object.reportMarkdown + referencesSection;
+}
+
+// Helper function to create the report prompt
+function createReportPrompt(
+  prompt: string,
+  reportLength: string,
+  insightDetail: number,
+  detailLevel: string,
+  learningsString: string,
+  sourcesString: string
+): string {
+  let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
+
+  if (insightDetail >= 7) {
+    promptTemplate += `
+    Your report MUST:
+    1. Be extremely detailed and comprehensive (${reportLength} of content)
+    2. Include ALL the learnings from the research
+    3. Be well-structured with clear sections, subsections, and a logical flow
+    4. Include an executive summary at the beginning
+    5. Provide in-depth analysis that builds upon the detailed learnings
+    6. Cover multiple perspectives and approaches
+    7. Discuss implications, applications, and future directions
+    8. Maintain academic rigor throughout
+    `;
+  } else if (insightDetail >= 4) {
+    promptTemplate += `
+    Your report should:
+    1. Be detailed and thorough (${reportLength} of content)
+    2. Incorporate the key information from the learnings
+    3. Have a clear structure with appropriate sections
+    4. Include an executive summary
+    5. Provide analysis and insights
+    6. Consider different perspectives where relevant
+    `;
+  } else {
+    promptTemplate += `
+    Your report should:
+    1. Be clear and concise (${reportLength} of content)
+    2. Capture the essential information from the learnings
+    3. Have a logical structure
+    4. Focus on the most important points
+    `;
+  }
+
+  promptTemplate += `\n\nVERY IMPORTANT: For EVERY factual statement in your report, you MUST include a citation to the relevant source. Here are the available sources you can cite:\n\n<sources>${sourcesString}</sources>\n\nCitation format:\n- For web sources: Use [web1], [web2], etc. at the end of the sentence or paragraph containing the information.\n- For PubMed sources: Use [pubmed1], [pubmed2], etc. at the end of the sentence or paragraph containing the information.\n\nYou MUST include at least one citation for every paragraph. If a paragraph contains information from multiple sources, include all relevant citations. If you're unsure which exact source a piece of information came from, cite multiple potential sources.\n\nExample of proper citation:\n"Recent studies have shown that immunotherapy is effective for treating certain types of cancer [web1][pubmed2]. However, the efficacy varies significantly based on cancer type and patient characteristics [pubmed1][web3]."\n\nRemember, this report should be ${detailLevel.toUpperCase()}, covering all aspects of the topic in appropriate detail.`;
+
+  return promptTemplate;
+}
+
+// Helper function to create the references section
+function createReferencesSection(webSources: any[], pubmedSources: any[]): string {
   let sourcesSection = `\n\n## References\n\n`;
 
   // Add web sources
@@ -194,7 +409,7 @@ export async function writeFinalReport({
     }).join('\n\n');
   }
 
-  return res.object.reportMarkdown + sourcesSection;
+  return sourcesSection;
 }
 
 export async function writeFinalAnswer({
@@ -232,6 +447,7 @@ export async function deepResearch({
   visitedUrls = [],
   pubMedArticles = [],
   meshRestrictiveness = MeshRestrictiveness.MEDIUM,
+  insightDetail = 5,
   onProgress,
 }: {
   query: string;
@@ -241,6 +457,7 @@ export async function deepResearch({
   visitedUrls?: string[];
   pubMedArticles?: PubMedArticle[];
   meshRestrictiveness?: MeshRestrictiveness;
+  insightDetail?: number;
   onProgress?: (progress: ResearchProgress) => void;
 }): Promise<ResearchResult> {
   const progress: ResearchProgress = {
@@ -302,6 +519,8 @@ export async function deepResearch({
             result,
             numFollowUpQuestions: newBreadth,
             pubMedArticles: newPubMedArticles,
+            breadth,
+            insightDetail,
           });
           const allLearnings = [...learnings, ...newLearnings.learnings];
           const allUrls = [...visitedUrls, ...newUrls];
@@ -329,6 +548,7 @@ export async function deepResearch({
               visitedUrls: allUrls,
               pubMedArticles: allPubMedArticles,
               meshRestrictiveness,
+              insightDetail,
               onProgress,
             });
           } else {
