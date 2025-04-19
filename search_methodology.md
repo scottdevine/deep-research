@@ -21,6 +21,7 @@ The research process is controlled by several key parameters:
 - **Depth**: Controls how many levels of recursive exploration are performed (default: 1)
 - **MeSH Restrictiveness**: Controls how strictly PubMed queries are converted to MeSH terms
 - **Insight Detail**: Controls the depth and comprehensiveness of research insights (scale: 1-10, default: 5)
+- **Model Selection**: Determines which AI model is used for all stages of the research process
 
 ## Detailed Process Flow
 
@@ -30,7 +31,27 @@ When a user submits a research query, the system:
 - Analyzes the query to understand the research topic
 - Determines the appropriate search strategy
 
-### 2. Search Query Generation
+### 2. Model Selection and Follow-up Questions
+
+After the initial query processing:
+
+1. **Model Selection**: The user selects which AI model to use for the research process
+   - The system fetches available models from OpenRouter API
+   - Models are grouped by provider (Anthropic, OpenAI, Meta, etc.)
+   - Each model displays its context window size
+   - The selected model is used consistently throughout the entire research process
+
+2. **Follow-up Question Generation**: The system generates follow-up questions to clarify the research direction
+   - Uses the selected model to generate questions relevant to the research topic
+   - Implements multiple fallback mechanisms to ensure reliable question generation:
+     - First attempts structured JSON output with schema validation
+     - If that fails, extracts JSON from markdown code blocks
+     - If that fails, falls back to text generation and parsing
+     - For specific topics (e.g., 340B drug program), provides domain-specific fallback questions
+     - As a last resort, provides generic research clarification questions
+   - Questions are tailored to help refine the research scope and direction
+
+### 3. Search Query Generation
 
 The system generates multiple search queries using the `generateSerpQueries` function:
 - The number of queries is determined by the `breadth` parameter
@@ -51,7 +72,7 @@ This might generate queries like:
 3. "Emerging targeted therapies for rheumatoid arthritis"
 ...and so on.
 
-### 3. Content Retrieval
+### 4. Content Retrieval
 
 For each generated search query, the system:
 
@@ -77,7 +98,7 @@ const result = await firecrawl.search(serpQuery.query, {
 const pubMedResult = await searchPubMed(serpQuery.query, 5, true, meshRestrictiveness);
 ```
 
-### 4. Learning Extraction
+### 5. Learning Extraction
 
 For each search query, after retrieving all content:
 
@@ -111,7 +132,7 @@ At higher detail levels, learnings include:
 
 **Important Note**: The system adjusts the number of learnings based on the Insight Detail parameter. Higher detail levels result in fewer but more comprehensive learnings, while lower detail levels produce more concise learnings.
 
-### 5. Recursive Exploration
+### 6. Recursive Exploration
 
 If the `depth` parameter is greater than 1:
 
@@ -134,11 +155,13 @@ return deepResearch({
   visitedUrls: allUrls,
   pubMedArticles: allPubMedArticles,
   meshRestrictiveness,
+  modelId, // Pass the selected model ID to maintain consistency
+  insightDetail,
   onProgress,
 });
 ```
 
-### 6. Report Generation
+### 7. Report Generation
 
 Once all queries at all depth levels have been processed:
 
@@ -153,6 +176,7 @@ const report = await writeFinalReport({
   learnings,
   visitedUrls,
   pubMedArticles,
+  modelId, // Use the selected model for report generation
   insightDetail // Controls the depth and comprehensiveness of the report
 });
 ```
@@ -369,6 +393,15 @@ For medium detail (4-7), the prompt is adjusted to request a more concise but st
 3. **Scaled Token Limits**: Token limits for learnings now scale based on the Insight Detail parameter (1000-10000 tokens), allowing for much more detailed and comprehensive insights.
 
 4. **Enhanced Report Generation**: Reports are now generated with varying levels of detail (3-50 pages) based on the Insight Detail parameter.
+
+5. **Model Selection**: Users can now select from a comprehensive list of AI models from OpenRouter, with the selected model used consistently throughout the entire research process.
+
+6. **Robust Follow-up Question Generation**: The system now implements multiple fallback mechanisms for generating follow-up questions, ensuring reliable question generation even when models return unexpected formats:
+   - Structured JSON output with schema validation
+   - JSON extraction from markdown code blocks
+   - Text generation and parsing
+   - Domain-specific fallback questions for certain topics
+   - Generic research clarification questions as a last resort
 
 ### Potential Future Improvements
 

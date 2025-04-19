@@ -1,5 +1,21 @@
 # Enhancement Ideas for Deep Research Tool
 
+## Completed Enhancements
+
+1. **Model Selection and Consistency**:
+   - ✅ Implemented comprehensive model selection from OpenRouter API
+   - ✅ Created a proxy API route to fetch the complete list of available models
+   - ✅ Ensured the selected model is used consistently throughout the research process
+   - ✅ Added model information display (provider, context window size)
+
+2. **Robust Follow-up Question Generation**:
+   - ✅ Implemented multiple fallback mechanisms for generating follow-up questions
+   - ✅ Added structured JSON output with schema validation
+   - ✅ Added JSON extraction from markdown code blocks
+   - ✅ Implemented text generation and parsing as a fallback
+   - ✅ Created domain-specific fallback questions for certain topics
+   - ✅ Added generic research clarification questions as a last resort
+
 ## Research Report Enhancements
 
 1. **Robust Detailed Learnings with Insight Detail Parameter**:
