@@ -58,20 +58,20 @@ function calculateTokenLimit(insightDetail: number): number {
 // Helper function to calculate report token limit based on insight detail
 // Reports need more tokens than individual learnings
 function calculateReportTokenLimit(insightDetail: number): number {
-  // Scale exponentially for reports
+  // Scale more conservatively to avoid model limitations
   // Level 1: ~2000 tokens (concise report)
-  // Level 5: ~8000 tokens (detailed report)
-  // Level 10: ~20000 tokens (comprehensive report)
+  // Level 5: ~6000 tokens (detailed report)
+  // Level 10: ~12000 tokens (comprehensive report)
 
   if (insightDetail <= 3) {
     // 2000-4000 tokens for levels 1-3
     return 2000 + (insightDetail - 1) * 1000;
   } else if (insightDetail <= 7) {
-    // 4000-12000 tokens for levels 4-7
-    return 4000 + (insightDetail - 4) * 2000;
+    // 4000-8000 tokens for levels 4-7
+    return 4000 + (insightDetail - 4) * 1000;
   } else {
-    // 12000-20000 tokens for levels 8-10
-    return 12000 + (insightDetail - 8) * 2667;
+    // 8000-12000 tokens for levels 8-10
+    return 8000 + (insightDetail - 8) * 1333;
   }
 }
 
@@ -97,10 +97,10 @@ function getDetailLevelDescription(insightDetail: number): string {
 
 // Helper function to get report length based on insight detail
 function getReportLength(insightDetail: number): string {
-  if (insightDetail >= 8) return "30-50 pages";
-  if (insightDetail >= 5) return "15-30 pages";
-  if (insightDetail >= 3) return "7-15 pages";
-  return "3-7 pages";
+  if (insightDetail >= 8) return "15-25 pages";
+  if (insightDetail >= 5) return "10-15 pages";
+  if (insightDetail >= 3) return "5-10 pages";
+  return "3-5 pages";
 }
 
 // increase this if you have higher API rate limits
@@ -382,7 +382,7 @@ function createReportPrompt(
     const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
     promptTemplate += `
     Your report MUST:
-    1. Be extremely detailed and comprehensive (${reportLength} of content, approximately ${wordCount} words)
+    1. Be detailed and comprehensive (${reportLength} of content, approximately ${wordCount} words)
     2. Include ALL the learnings from the research
     3. Be well-structured with clear sections, subsections, and a logical flow
     4. Include an executive summary at the beginning
@@ -390,7 +390,7 @@ function createReportPrompt(
     6. Cover multiple perspectives and approaches
     7. Discuss implications, applications, and future directions
     8. Maintain academic rigor throughout
-    9. IMPORTANT: The report should be very detailed and lengthy (${wordCount}+ words)
+    9. IMPORTANT: The report should be detailed and substantial (${wordCount}+ words)
     `;
   } else if (insightDetail >= 4) {
     const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
