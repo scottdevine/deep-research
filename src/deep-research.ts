@@ -1,5 +1,5 @@
 import FirecrawlApp, { SearchResponse } from '@mendable/firecrawl-js';
-import { generateObject } from 'ai';
+import { generateObject, generateText } from 'ai';
 import { compact } from 'lodash-es';
 import pLimit from 'p-limit';
 import { z } from 'zod';
@@ -118,41 +118,151 @@ async function generateSerpQueries({
   query,
   numQueries = 3,
   learnings,
+  modelId,
 }: {
   query: string;
   numQueries?: number;
-
   // optional, if provided, the research will continue from the last learning
   learnings?: string[];
+  modelId?: string;
 }) {
-  const res = await generateObject({
-    model: getModel(),
-    system: systemPrompt(),
-    prompt: `Given the following prompt from the user, generate a list of SERP queries to research the topic. Return a maximum of ${numQueries} queries, but feel free to return less if the original prompt is clear. Make sure each query is unique and not similar to each other: <prompt>${query}</prompt>\n\n${
-      learnings
-        ? `Here are some learnings from previous research, use them to generate more specific queries: ${learnings.join(
-            '\n',
-          )}`
-        : ''
-    }`,
-    schema: z.object({
-      queries: z
-        .array(
-          z.object({
-            query: z.string().describe('The SERP query'),
-            researchGoal: z
-              .string()
-              .describe(
-                'First talk about the goal of the research that this query is meant to accomplish, then go deeper into how to advance the research once the results are found, mention additional research directions. Be as specific as possible, especially for additional research directions.',
-              ),
-          }),
-        )
-        .describe(`List of SERP queries, max of ${numQueries}`),
-    }),
-  });
-  log(`Created ${res.object.queries.length} queries`, res.object.queries);
+  try {
+    // First try with structured JSON output
+    const res = await generateObject({
+      model: getModel(modelId),
+      system: systemPrompt(),
+      prompt: `Given the following prompt from the user, generate a list of SERP queries to research the topic. Return a maximum of ${numQueries} queries, but feel free to return less if the original prompt is clear. Make sure each query is unique and not similar to each other. Format your response as a JSON object with a 'queries' array containing objects with 'query' and 'researchGoal' properties. Do not wrap your response in markdown code blocks or any other formatting: <prompt>${query}</prompt>\n\n${
+        learnings
+          ? `Here are some learnings from previous research, use them to generate more specific queries: ${learnings.join(
+              '\n',
+            )}`
+          : ''
+      }`,
+      schema: z.object({
+        queries: z
+          .array(
+            z.object({
+              query: z.string().describe('The SERP query'),
+              researchGoal: z
+                .string()
+                .describe(
+                  'First talk about the goal of the research that this query is meant to accomplish, then go deeper into how to advance the research once the results are found, mention additional research directions. Be as specific as possible, especially for additional research directions.',
+                ),
+            }),
+          )
+          .describe(`List of SERP queries, max of ${numQueries}`),
+      }),
+    });
 
-  return res.object.queries.slice(0, numQueries);
+    log(`Created ${res.object.queries.length} queries`, res.object.queries);
+    return res.object.queries.slice(0, numQueries);
+  } catch (error) {
+    console.log('Error generating structured queries, falling back to text parsing:', error);
+
+    try {
+      // Try to extract JSON from markdown code blocks if that's the issue
+      if (error.cause?.text) {
+        const jsonMatch = error.cause.text.match(/```(?:json)?\n([\s\S]*?)\n```/);
+        if (jsonMatch && jsonMatch[1]) {
+          try {
+            const parsedJson = JSON.parse(jsonMatch[1]);
+            if (parsedJson.queries && Array.isArray(parsedJson.queries)) {
+              log(`Created ${parsedJson.queries.length} queries from extracted JSON`, parsedJson.queries);
+              return parsedJson.queries.slice(0, numQueries);
+            }
+          } catch (jsonError) {
+            console.log('Failed to parse extracted JSON:', jsonError);
+          }
+        }
+      }
+
+      // Fallback to text generation and parsing
+      const response = await generateText({
+        model: getModel(modelId),
+        system: systemPrompt(),
+        prompt: `Given the following prompt from the user, generate a list of SERP queries to research the topic. Return a maximum of ${numQueries} queries, but feel free to return less if the original prompt is clear. Make sure each query is unique and not similar to each other. Number each query (1., 2., 3.) and put each on a new line. For each query, also include a research goal on the next line, indented with a tab or spaces: <prompt>${query}</prompt>\n\n${
+          learnings
+            ? `Here are some learnings from previous research, use them to generate more specific queries: ${learnings.join(
+                '\n',
+              )}`
+            : ''
+        }`,
+      });
+
+      // Parse the text response to extract queries
+      const queries = [];
+
+      if (response && response.content) {
+        const lines = response.content.split('\n');
+        let currentQuery = null;
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+
+          // Look for lines that start with a number followed by a period
+          const queryMatch = line.match(/^\s*\d+\.\s*(.+)/);
+          if (queryMatch && queryMatch[1]) {
+            if (currentQuery) {
+              queries.push(currentQuery);
+            }
+
+            currentQuery = {
+              query: queryMatch[1].trim(),
+              researchGoal: ''
+            };
+          } else if (currentQuery && line && !line.match(/^\s*\d+\./) && i > 0) {
+            // If we have a current query and this line isn't a new numbered query,
+            // add it to the research goal
+            if (currentQuery.researchGoal) {
+              currentQuery.researchGoal += ' ' + line;
+            } else {
+              currentQuery.researchGoal = line;
+            }
+          }
+        }
+
+        // Add the last query if there is one
+        if (currentQuery) {
+          queries.push(currentQuery);
+        }
+      }
+
+      // If we couldn't parse any queries, generate some default ones
+      if (queries.length === 0) {
+        const defaultQueries = [
+          {
+            query: `Latest advancements in ${query}`,
+            researchGoal: `This query aims to find the most recent developments and breakthroughs in ${query}. The research will focus on identifying cutting-edge technologies, methodologies, and applications that have emerged in the past 1-2 years.`
+          },
+          {
+            query: `Real-world applications of ${query}`,
+            researchGoal: `This query seeks to discover practical implementations and use cases of ${query} in various industries and sectors. The research will examine how the technology or concept is being applied to solve real-world problems and the impact it has had.`
+          }
+        ];
+
+        return defaultQueries.slice(0, numQueries);
+      }
+
+      log(`Created ${queries.length} queries from text parsing`, queries);
+      return queries.slice(0, numQueries);
+    } catch (fallbackError) {
+      console.error('Error in fallback query generation:', fallbackError);
+
+      // Ultimate fallback - return generic queries
+      const genericQueries = [
+        {
+          query: `Latest advancements in ${query}`,
+          researchGoal: `This query aims to find the most recent developments and breakthroughs in ${query}. The research will focus on identifying cutting-edge technologies, methodologies, and applications that have emerged in the past 1-2 years.`
+        },
+        {
+          query: `Real-world applications of ${query}`,
+          researchGoal: `This query seeks to discover practical implementations and use cases of ${query} in various industries and sectors. The research will examine how the technology or concept is being applied to solve real-world problems and the impact it has had.`
+        }
+      ];
+
+      return genericQueries.slice(0, numQueries);
+    }
+  }
 }
 
 async function processSerpResult({
@@ -163,6 +273,7 @@ async function processSerpResult({
   pubMedArticles = [],
   breadth = 5,
   insightDetail = 5,
+  modelId,
 }: {
   query: string;
   result: SearchResponse;
@@ -171,6 +282,7 @@ async function processSerpResult({
   pubMedArticles?: PubMedArticle[];
   breadth?: number;
   insightDetail?: number;
+  modelId?: string;
 }) {
   // Calculate parameters based on insight detail
   const tokenLimit = calculateTokenLimit(insightDetail);
@@ -219,7 +331,7 @@ async function processSerpResult({
 
   // Generate the learnings
   const res = await generateObject({
-    model: getModel(),
+    model: getModel(modelId),
     abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
     system: systemPrompt(),
     prompt: learningPrompt,
@@ -507,6 +619,7 @@ export async function deepResearch({
   pubMedArticles = [],
   meshRestrictiveness = MeshRestrictiveness.MEDIUM,
   insightDetail = 5,
+  modelId,
   onProgress,
 }: {
   query: string;
@@ -517,6 +630,7 @@ export async function deepResearch({
   pubMedArticles?: PubMedArticle[];
   meshRestrictiveness?: MeshRestrictiveness;
   insightDetail?: number;
+  modelId?: string;
   onProgress?: (progress: ResearchProgress) => void;
 }): Promise<ResearchResult> {
   const progress: ResearchProgress = {
@@ -537,6 +651,7 @@ export async function deepResearch({
     query,
     learnings,
     numQueries: breadth,
+    modelId,
   });
 
   reportProgress({
@@ -580,6 +695,7 @@ export async function deepResearch({
             pubMedArticles: newPubMedArticles,
             breadth,
             insightDetail,
+            modelId,
           });
           const allLearnings = [...learnings, ...newLearnings.learnings];
           const allUrls = [...visitedUrls, ...newUrls];
@@ -608,6 +724,7 @@ export async function deepResearch({
               pubMedArticles: allPubMedArticles,
               meshRestrictiveness,
               insightDetail,
+              modelId,
               onProgress,
             });
           } else {
