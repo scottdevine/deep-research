@@ -83,7 +83,7 @@ async function generateSerpQueries({
 async function processSerpResult({
   query,
   result,
-  numLearnings = 3,
+  numLearnings = 5,
   numFollowUpQuestions = 3,
   pubMedArticles = [],
 }: {
@@ -168,10 +168,10 @@ export async function writeFinalReport({
     model: getModel(),
     system: systemPrompt(),
     prompt: trimPrompt(
-      `Given the following prompt from the user, write a final report on the topic using the learnings from research. Make it as detailed as possible, aim for 3 or more pages, and include ALL the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\nVERY IMPORTANT: For EVERY factual statement in your report, you MUST include a citation to the relevant source. Here are the available sources you can cite:\n\n<sources>${sourcesString}</sources>\n\nCitation format:\n- For web sources: Use [web1], [web2], etc. at the end of the sentence or paragraph containing the information.\n- For PubMed sources: Use [pubmed1], [pubmed2], etc. at the end of the sentence or paragraph containing the information.\n\nYou MUST include at least one citation for every paragraph. If a paragraph contains information from multiple sources, include all relevant citations. If you're unsure which exact source a piece of information came from, cite multiple potential sources.\n\nExample of proper citation:\n"Recent studies have shown that immunotherapy is effective for treating certain types of cancer [web1][pubmed2]. However, the efficacy varies significantly based on cancer type and patient characteristics [pubmed1][web3]."`,
+      `Given the following prompt from the user, write a COMPREHENSIVE and DETAILED final report on the topic using the learnings from research. This should be an extensive report that thoroughly covers all aspects of the topic.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\nYour report MUST:\n1. Be extremely detailed and comprehensive (minimum 5-7 pages of content)\n2. Include ALL the learnings from the research\n3. Be well-structured with clear sections and subsections\n4. Include an executive summary at the beginning\n5. Provide in-depth analysis, not just summaries\n6. Cover multiple perspectives and approaches\n7. Discuss implications, applications, and future directions\n\nVERY IMPORTANT: For EVERY factual statement in your report, you MUST include a citation to the relevant source. Here are the available sources you can cite:\n\n<sources>${sourcesString}</sources>\n\nCitation format:\n- For web sources: Use [web1], [web2], etc. at the end of the sentence or paragraph containing the information.\n- For PubMed sources: Use [pubmed1], [pubmed2], etc. at the end of the sentence or paragraph containing the information.\n\nYou MUST include at least one citation for every paragraph. If a paragraph contains information from multiple sources, include all relevant citations. If you're unsure which exact source a piece of information came from, cite multiple potential sources.\n\nExample of proper citation:\n"Recent studies have shown that immunotherapy is effective for treating certain types of cancer [web1][pubmed2]. However, the efficacy varies significantly based on cancer type and patient characteristics [pubmed1][web3]."\n\nRemember, this report should be COMPREHENSIVE and EXHAUSTIVE, covering all aspects of the topic in great detail.`,
     ),
     schema: z.object({
-      reportMarkdown: z.string().describe('Final report on the topic in Markdown with proper citations'),
+      reportMarkdown: z.string().describe('Comprehensive and detailed final report on the topic in Markdown with proper citations'),
     }),
   });
 
@@ -277,20 +277,21 @@ export async function deepResearch({
           // Search Firecrawl
           const result = await firecrawl.search(serpQuery.query, {
             timeout: 15000,
-            limit: 5,
+            limit: 10,
             scrapeOptions: { formats: ['markdown'] },
           });
 
           // Search PubMed if enabled
           let newPubMedArticles: PubMedArticle[] = [];
           if (process.env.INCLUDE_PUBMED_SEARCH === 'true' && process.env.PUBMED_API_KEY) {
-            const pubMedResult = await searchPubMed(serpQuery.query, 3, true, meshRestrictiveness);
+            const pubMedResult = await searchPubMed(serpQuery.query, 5, true, meshRestrictiveness);
             newPubMedArticles = pubMedResult.articles;
           }
 
           // Collect URLs from this search
           const newUrls = compact(result.data.map(item => item.url));
-          const newBreadth = Math.ceil(breadth / 2);
+          // Reduce breadth more gradually to maintain more queries at deeper levels
+          const newBreadth = Math.ceil(breadth * 0.75);
           const newDepth = depth - 1;
 
           // Combine PubMed articles
