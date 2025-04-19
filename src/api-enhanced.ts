@@ -525,24 +525,51 @@ app.get('/api/models', async (req, res) => {
 
     const data = await response.json();
 
+    // Log the raw data for debugging
+    console.log('OpenRouter API response:', JSON.stringify(data, null, 2));
+
     // Format the models data for the frontend
-    const formattedModels = data.data.map((model: any) => ({
-      id: model.id,
-      name: model.name,
-      provider: model.provider.name || model.provider,
-      description: model.description,
-      context_length: model.context_length,
-      pricing: {
-        prompt: model.pricing?.prompt,
-        completion: model.pricing?.completion
-      },
-      capabilities: model.capabilities || {}
-    }));
+    const formattedModels = data.data.map((model: any) => {
+      // Handle different provider formats
+      let providerName = 'Unknown';
+      if (typeof model.provider === 'string') {
+        providerName = model.provider;
+      } else if (model.provider && typeof model.provider === 'object') {
+        providerName = model.provider.name || 'Unknown';
+      }
+
+      return {
+        id: model.id,
+        name: model.name || model.id.split('/').pop(),
+        provider: providerName,
+        description: model.description || '',
+        context_length: model.context_length || 0,
+        pricing: {
+          prompt: model.pricing?.prompt || 0,
+          completion: model.pricing?.completion || 0
+        },
+        capabilities: model.capabilities || {}
+      };
+    });
 
     res.json(formattedModels);
   } catch (error) {
     console.error('Error fetching models from OpenRouter:', error);
-    res.status(500).json({ error: 'Failed to fetch models from OpenRouter' });
+
+    // Return a more detailed error message
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      error: 'Failed to fetch models from OpenRouter',
+      details: errorMessage,
+      // Include a fallback list of models
+      fallbackModels: [
+        { id: 'anthropic/claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic' },
+        { id: 'anthropic/claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'Anthropic' },
+        { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+        { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
+        { id: 'meta-llama/llama-3-70b-instruct', name: 'Llama 3 70B', provider: 'Meta' },
+      ]
+    });
   }
 });
 

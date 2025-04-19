@@ -16,15 +16,23 @@ export interface Model {
 export async function fetchModels(): Promise<Model[]> {
   try {
     const response = await fetch('/api/models');
+    const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${await response.text()}`);
+    // If the API returns an error but includes fallback models, use those
+    if (!response.ok && data.fallbackModels) {
+      console.warn('Using fallback models due to API error:', data.error, data.details);
+      return data.fallbackModels;
     }
 
-    return await response.json();
+    // If the API returns an error without fallback models, throw an error
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${JSON.stringify(data)}`);
+    }
+
+    return data;
   } catch (error) {
     console.error('Error fetching models:', error);
-    return [];
+    return DEFAULT_MODELS;
   }
 }
 
