@@ -618,35 +618,13 @@ export async function writeFinalReport({
   // Log that we're generating the report
   console.log(`Generating ${detailLevel} report based on all learnings with token limit of ${reportTokenLimit} tokens (approx. ${Math.floor(reportTokenLimit / 1.33)} words)`);
 
+  // Skip the structured output approach entirely and just use text generation
+  // This is more reliable across different models
   try {
-    // Generate the final report with explicit token limit using structured output
-    const res = await generateObject({
-      model: getModel(modelId),
-      system: systemPrompt(),
-      prompt: trimPrompt(reportPrompt + "\n\nFormat your response as a JSON object with a 'reportMarkdown' field. Do not wrap your response in markdown code blocks or any other formatting."),
-      max_tokens: reportTokenLimit, // Explicitly set a high max_tokens value
-      abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
-      schema: z.object({
-        reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive, extremely detailed, and include ALL information from the learnings. Aim for at least ${Math.floor(reportTokenLimit * 0.75)} tokens or ${Math.floor(reportTokenLimit * 0.75 / 1.33)} words.`),
-      }),
-    });
-
-    // Log the approximate word count for debugging
-    const wordCount = res.object.reportMarkdown.split(/\s+/).length;
-    console.log(`Generated report with approximately ${wordCount} words`);
-
-    // Add references section
-    const referencesSection = createReferencesSection(webSources, pubmedSources);
-
-    return res.object.reportMarkdown + referencesSection;
-  } catch (error) {
-    console.log('Error generating structured report, falling back to text generation:', error);
-
-    // Fallback to text generation
     const response = await generateText({
       model: getModel(modelId),
       system: systemPrompt(),
-      prompt: trimPrompt(reportPrompt + "\n\nProvide your report directly in Markdown format. Do not include any JSON formatting or additional wrappers."),
+      prompt: trimPrompt(reportPrompt + `\n\nProvide your report directly in Markdown format. Do not include any JSON formatting or additional wrappers. Your report should be extremely comprehensive and detailed, aiming for at least ${Math.floor(reportTokenLimit * 0.75 / 1.33)} words.`),
       max_tokens: reportTokenLimit,
       abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
     });
@@ -664,9 +642,25 @@ export async function writeFinalReport({
     // Remove any JSON formatting if present
     if (reportMarkdown.startsWith('{') && reportMarkdown.endsWith('}')) {
       try {
-        const jsonObj = JSON.parse(reportMarkdown);
-        if (jsonObj.reportMarkdown) {
-          reportMarkdown = jsonObj.reportMarkdown;
+        // Try to extract the reportMarkdown field from JSON
+        const jsonMatch = reportMarkdown.match(/"reportMarkdown"\s*:\s*"([\s\S]*?)"(?:,|\s*})/i);
+        if (jsonMatch && jsonMatch[1]) {
+          // Unescape any escaped quotes and newlines
+          reportMarkdown = jsonMatch[1]
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+        } else {
+          // Try to parse as JSON
+          try {
+            const jsonObj = JSON.parse(reportMarkdown);
+            if (jsonObj.reportMarkdown) {
+              reportMarkdown = jsonObj.reportMarkdown;
+            }
+          } catch (e) {
+            // Not valid JSON, keep as is
+          }
         }
       } catch (e) {
         // Not valid JSON, keep as is
@@ -675,12 +669,15 @@ export async function writeFinalReport({
 
     // Log the approximate word count for debugging
     const wordCount = reportMarkdown.split(/\s+/).length;
-    console.log(`Generated report with approximately ${wordCount} words (text fallback)`);
+    console.log(`Generated report with approximately ${wordCount} words`);
 
     // Add references section
     const referencesSection = createReferencesSection(webSources, pubmedSources);
 
     return reportMarkdown + referencesSection;
+  } catch (error) {
+    console.error('Error generating report:', error);
+    throw new Error('Failed to generate report');
   }
 }
 
