@@ -77,6 +77,17 @@ const DEFAULT_MODEL = 'anthropic/claude-3-opus-20240229';
 function createOpenRouterModel(modelId: string): LanguageModelV1 | undefined {
   if (!openrouter) return undefined;
 
+  // For OpenAI models, we need to avoid using json_schema response_format
+  // as it's not supported by all API versions
+  if (modelId.startsWith('openai/')) {
+    return openrouter(modelId, {
+      reasoningEffort: 'high',
+      // Don't use structuredOutputs for OpenAI models through OpenRouter
+      // as it causes issues with json_schema response_format
+    });
+  }
+
+  // For other models, use structuredOutputs
   return openrouter(modelId, {
     reasoningEffort: 'high',
     structuredOutputs: true,

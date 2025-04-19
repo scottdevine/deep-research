@@ -329,33 +329,185 @@ async function processSerpResult({
     });
   }
 
-  // Generate the learnings
-  const res = await generateObject({
-    model: getModel(modelId),
-    abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
-    system: systemPrompt(),
-    prompt: learningPrompt,
-    max_tokens: tokenLimit * adjustedNumLearnings, // Set max tokens based on insight detail
-    schema,
-  });
+  try {
+    // Generate the learnings with structured output
+    const res = await generateObject({
+      model: getModel(modelId),
+      abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
+      system: systemPrompt(),
+      prompt: learningPrompt + "\n\nFormat your response as a JSON object with the appropriate fields. Do not wrap your response in markdown code blocks or any other formatting.",
+      max_tokens: tokenLimit * adjustedNumLearnings, // Set max tokens based on insight detail
+      schema,
+    });
 
+    return processLearningResults(res.object, insightDetail);
+  } catch (error) {
+    console.log('Error generating structured learnings, falling back to text parsing:', error);
+
+    // Fallback to text generation
+    const response = await generateText({
+      model: getModel(modelId),
+      abortSignal: AbortSignal.timeout(180_000),
+      system: systemPrompt(),
+      prompt: learningPrompt + "\n\nProvide your response in a clear, structured format with numbered learnings and follow-up questions.",
+      max_tokens: tokenLimit * adjustedNumLearnings,
+    });
+
+    if (!response || !response.content) {
+      throw new Error('Failed to generate learnings');
+    }
+
+    // Parse the text response
+    return parseTextLearnings(response.content, insightDetail, adjustedNumLearnings, numFollowUpQuestions);
+  }
+
+}
+
+// Process the structured learning results
+function processLearningResults(result: any, insightDetail: number) {
   // Process the result based on insight detail level
-  if (insightDetail >= 5 && 'detailedLearnings' in res.object) {
+  if (insightDetail >= 5 && 'detailedLearnings' in result) {
     // Convert detailed learnings to simple strings for backward compatibility
-    const simpleLearnings = res.object.detailedLearnings.map(learning => {
+    const simpleLearnings = result.detailedLearnings.map((learning: any) => {
       return `${learning.title}\n\n${learning.content}`;
     });
 
-    log(`Created ${res.object.detailedLearnings.length} detailed learnings`);
+    log(`Created ${result.detailedLearnings.length} detailed learnings`);
 
     return {
       learnings: simpleLearnings,
-      followUpQuestions: res.object.followUpQuestions,
-      detailedLearnings: res.object.detailedLearnings
+      followUpQuestions: result.followUpQuestions,
+      detailedLearnings: result.detailedLearnings
     };
   } else {
-    log(`Created ${res.object.learnings.length} learnings`);
-    return res.object;
+    log(`Created ${result.learnings.length} learnings`);
+    return result;
+  }
+}
+
+// Parse text-based learning results
+function parseTextLearnings(text: string, insightDetail: number, numLearnings: number, numFollowUpQuestions: number) {
+  // Split the text into sections
+  const sections = text.split(/\n\s*\n+/);
+
+  // Initialize arrays for learnings and follow-up questions
+  let learnings: string[] = [];
+  let followUpQuestions: string[] = [];
+  let detailedLearnings: any[] = [];
+
+  // Process each section
+  for (const section of sections) {
+    const trimmedSection = section.trim();
+
+    // Skip empty sections
+    if (!trimmedSection) continue;
+
+    // Check if this section contains follow-up questions
+    if (
+      trimmedSection.toLowerCase().includes('follow-up questions') ||
+      trimmedSection.toLowerCase().includes('follow up questions') ||
+      trimmedSection.toLowerCase().includes('further research')
+    ) {
+      // Extract questions using numbered or bulleted list patterns
+      const questionMatches = trimmedSection.match(/(?:^|\n)\s*(?:\d+\.|-|\*|•)\s*(.+?)(?=(?:\n\s*(?:\d+\.|-|\*|•))|$)/gs);
+
+      if (questionMatches) {
+        followUpQuestions = questionMatches
+          .map(q => q.replace(/^\s*(?:\d+\.|-|\*|•)\s*/, '').trim())
+          .filter(q => q.length > 0)
+          .slice(0, numFollowUpQuestions);
+      }
+
+      continue;
+    }
+
+    // Check if this is a learning
+    if (
+      trimmedSection.match(/^\s*(?:Learning|\d+\.|Key Finding|Finding)/) ||
+      trimmedSection.includes('Title:') ||
+      trimmedSection.match(/^[A-Z][^\n.]+:/) // Starts with capitalized word followed by colon
+    ) {
+      // For higher insight detail, try to parse as detailed learning
+      if (insightDetail >= 5) {
+        const titleMatch = trimmedSection.match(/(?:Title|Learning \d+|Key Finding \d+):?\s*([^\n]+)/);
+        const contentMatch = trimmedSection.match(/(?:Content|Description|Details):?\s*([\s\S]+?)(?=(?:Sources|Key Points|References)|$)/i);
+        const sourcesMatch = trimmedSection.match(/(?:Sources|References):?\s*([\s\S]+?)(?=(?:Key Points)|$)/i);
+        const keyPointsMatch = trimmedSection.match(/(?:Key Points|Main Points):?\s*([\s\S]+?)$/i);
+
+        if (titleMatch) {
+          const title = titleMatch[1].trim();
+          const content = contentMatch ? contentMatch[1].trim() : trimmedSection;
+
+          // Extract sources if available
+          let sources: string[] = [];
+          if (sourcesMatch) {
+            const sourcesText = sourcesMatch[1].trim();
+            sources = sourcesText
+              .split(/\n|,|;/)
+              .map(s => s.trim())
+              .filter(s => s.length > 0);
+          }
+
+          // Extract key points if available
+          let keyPoints: string[] = [];
+          if (keyPointsMatch) {
+            const keyPointsText = keyPointsMatch[1].trim();
+            keyPoints = keyPointsText
+              .split(/\n|•|-|\*/)
+              .map(p => p.trim())
+              .filter(p => p.length > 0);
+          }
+
+          // Add to detailed learnings
+          detailedLearnings.push({
+            title,
+            content,
+            sources,
+            keyPoints: keyPoints.length > 0 ? keyPoints : ["Key points not explicitly provided"]
+          });
+
+          // Also add to simple learnings
+          learnings.push(`${title}\n\n${content}`);
+        } else {
+          // Fallback to treating as simple learning
+          learnings.push(trimmedSection);
+        }
+      } else {
+        // For lower insight detail, just add as simple learning
+        learnings.push(trimmedSection);
+      }
+    } else if (learnings.length < numLearnings) {
+      // If we haven't found enough learnings yet, treat this section as a learning
+      learnings.push(trimmedSection);
+    }
+  }
+
+  // Ensure we don't exceed the requested number of learnings
+  learnings = learnings.slice(0, numLearnings);
+
+  // If we couldn't extract follow-up questions, generate some generic ones
+  if (followUpQuestions.length === 0) {
+    followUpQuestions = [
+      "What are the most recent developments in this field?",
+      "What are the practical applications of these findings?",
+      "What are the limitations or challenges in this area?"
+    ].slice(0, numFollowUpQuestions);
+  }
+
+  // Log the results
+  if (detailedLearnings.length > 0) {
+    log(`Created ${detailedLearnings.length} detailed learnings from text`);
+    return {
+      learnings,
+      followUpQuestions,
+      detailedLearnings
+    };
+  } else {
+    log(`Created ${learnings.length} learnings from text`);
+    return {
+      learnings,
+      followUpQuestions
+    };
   }
 }
 
@@ -466,26 +618,70 @@ export async function writeFinalReport({
   // Log that we're generating the report
   console.log(`Generating ${detailLevel} report based on all learnings with token limit of ${reportTokenLimit} tokens (approx. ${Math.floor(reportTokenLimit / 1.33)} words)`);
 
-  // Generate the final report with explicit token limit
-  const res = await generateObject({
-    model: getModel(modelId),
-    system: systemPrompt(),
-    prompt: trimPrompt(reportPrompt),
-    max_tokens: reportTokenLimit, // Explicitly set a high max_tokens value
-    abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
-    schema: z.object({
-      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive, extremely detailed, and include ALL information from the learnings. Aim for at least ${Math.floor(reportTokenLimit * 0.75)} tokens or ${Math.floor(reportTokenLimit * 0.75 / 1.33)} words.`),
-    }),
-  });
+  try {
+    // Generate the final report with explicit token limit using structured output
+    const res = await generateObject({
+      model: getModel(modelId),
+      system: systemPrompt(),
+      prompt: trimPrompt(reportPrompt + "\n\nFormat your response as a JSON object with a 'reportMarkdown' field. Do not wrap your response in markdown code blocks or any other formatting."),
+      max_tokens: reportTokenLimit, // Explicitly set a high max_tokens value
+      abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
+      schema: z.object({
+        reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive, extremely detailed, and include ALL information from the learnings. Aim for at least ${Math.floor(reportTokenLimit * 0.75)} tokens or ${Math.floor(reportTokenLimit * 0.75 / 1.33)} words.`),
+      }),
+    });
 
-  // Log the approximate word count for debugging
-  const wordCount = res.object.reportMarkdown.split(/\s+/).length;
-  console.log(`Generated report with approximately ${wordCount} words`);
+    // Log the approximate word count for debugging
+    const wordCount = res.object.reportMarkdown.split(/\s+/).length;
+    console.log(`Generated report with approximately ${wordCount} words`);
 
-  // Add references section
-  const referencesSection = createReferencesSection(webSources, pubmedSources);
+    // Add references section
+    const referencesSection = createReferencesSection(webSources, pubmedSources);
 
-  return res.object.reportMarkdown + referencesSection;
+    return res.object.reportMarkdown + referencesSection;
+  } catch (error) {
+    console.log('Error generating structured report, falling back to text generation:', error);
+
+    // Fallback to text generation
+    const response = await generateText({
+      model: getModel(modelId),
+      system: systemPrompt(),
+      prompt: trimPrompt(reportPrompt + "\n\nProvide your report directly in Markdown format. Do not include any JSON formatting or additional wrappers."),
+      max_tokens: reportTokenLimit,
+      abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
+    });
+
+    if (!response || !response.content) {
+      throw new Error('Failed to generate report');
+    }
+
+    // Clean up the response - remove any JSON or code block formatting
+    let reportMarkdown = response.content.trim();
+
+    // Remove markdown code blocks if present
+    reportMarkdown = reportMarkdown.replace(/```(?:markdown|md)?([\s\S]*?)```/g, '$1').trim();
+
+    // Remove any JSON formatting if present
+    if (reportMarkdown.startsWith('{') && reportMarkdown.endsWith('}')) {
+      try {
+        const jsonObj = JSON.parse(reportMarkdown);
+        if (jsonObj.reportMarkdown) {
+          reportMarkdown = jsonObj.reportMarkdown;
+        }
+      } catch (e) {
+        // Not valid JSON, keep as is
+      }
+    }
+
+    // Log the approximate word count for debugging
+    const wordCount = reportMarkdown.split(/\s+/).length;
+    console.log(`Generated report with approximately ${wordCount} words (text fallback)`);
+
+    // Add references section
+    const referencesSection = createReferencesSection(webSources, pubmedSources);
+
+    return reportMarkdown + referencesSection;
+  }
 }
 
 // Helper function to create the report prompt

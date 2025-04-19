@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { generateObject } from 'ai';
+import { generateObject, generateText } from 'ai';
 import { z } from 'zod';
 
 import { getModel } from './ai/providers';
@@ -115,23 +115,67 @@ export async function convertToMeshTerms(query: string, restrictiveness: MeshRes
         break;
     }
 
-    const res = await generateObject({
-      model: getModel(),
-      system: systemPrompt(),
-      prompt: `You are a medical research expert specializing in PubMed searches. Convert the following natural language query into an optimized PubMed search query using appropriate MeSH (Medical Subject Headings) terms. Format the query with proper Boolean operators (AND, OR, NOT) and use MeSH terms with [MeSH] tags where appropriate. Include relevant subheadings and qualifiers if needed.
+    try {
+      // First try with structured JSON output
+      const res = await generateObject({
+        model: getModel(),
+        system: systemPrompt(),
+        prompt: `You are a medical research expert specializing in PubMed searches. Convert the following natural language query into an optimized PubMed search query using appropriate MeSH (Medical Subject Headings) terms. Format the query with proper Boolean operators (AND, OR, NOT) and use MeSH terms with [MeSH] tags where appropriate. Include relevant subheadings and qualifiers if needed.
 
 ${restrictivenessguidance}
 
 Natural language query: ${query}
 
-Provide ONLY the formatted PubMed search query with MeSH terms, nothing else.`,
-      schema: z.object({
-        meshQuery: z.string().describe('The optimized PubMed search query using MeSH terms')
-      }),
-    });
+Provide ONLY the formatted PubMed search query with MeSH terms as a JSON object with a 'meshQuery' field. Do not wrap your response in markdown code blocks or any other formatting.`,
+        schema: z.object({
+          meshQuery: z.string().describe('The optimized PubMed search query using MeSH terms')
+        }),
+      });
 
-    log(`Converted to MeSH query: ${res.object.meshQuery}`);
-    return res.object.meshQuery;
+      log(`Converted to MeSH query: ${res.object.meshQuery}`);
+      return res.object.meshQuery;
+    } catch (jsonError) {
+      // Fallback to text generation
+      log('Falling back to text generation for MeSH terms');
+      const response = await generateText({
+        model: getModel(),
+        system: systemPrompt(),
+        prompt: `You are a medical research expert specializing in PubMed searches. Convert the following natural language query into an optimized PubMed search query using appropriate MeSH (Medical Subject Headings) terms. Format the query with proper Boolean operators (AND, OR, NOT) and use MeSH terms with [MeSH] tags where appropriate. Include relevant subheadings and qualifiers if needed.
+
+${restrictivenessguidance}
+
+Natural language query: ${query}
+
+Provide ONLY the formatted PubMed search query with MeSH terms, nothing else. Do not include any explanations, JSON formatting, or markdown.`,
+      });
+
+      if (response && response.content) {
+        // Clean up the response - remove any markdown formatting or explanations
+        let meshQuery = response.content.trim();
+
+        // Remove markdown code blocks if present
+        meshQuery = meshQuery.replace(/```[\s\S]*?```/g, '').trim();
+
+        // Remove any lines that look like explanations
+        const lines = meshQuery.split('\n');
+        const queryLines = lines.filter(line =>
+          line.includes('[MeSH]') ||
+          line.includes('AND') ||
+          line.includes('OR') ||
+          line.includes('NOT') ||
+          /\([^)]+\)/.test(line) // Contains parentheses
+        );
+
+        if (queryLines.length > 0) {
+          meshQuery = queryLines.join(' ');
+        }
+
+        log(`Converted to MeSH query (text fallback): ${meshQuery}`);
+        return meshQuery;
+      }
+
+      throw new Error('Failed to generate MeSH terms');
+    }
   } catch (error) {
     log('Error converting to MeSH terms:', error);
     // If conversion fails, return the original query
