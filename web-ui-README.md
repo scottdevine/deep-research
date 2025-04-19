@@ -6,6 +6,7 @@ A modern web interface for the Deep Research tool that allows users to conduct i
 
 - **Simple, Intuitive Interface**: Clean design focused on user experience
 - **Streamlined Research Process**: Collects all necessary information upfront
+- **Customizable Research Parameters**: Control breadth, depth, and insight detail
 - **Real-time Progress Tracking**: Shows research progress with live updates
 - **Attractive Results Display**: Presents findings in a well-organized format
 - **Export Options**: Save reports in various formats (PDF, Markdown, Word)

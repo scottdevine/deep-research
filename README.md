@@ -69,7 +69,7 @@ flowchart TB
 
 - **Iterative Research**: Performs deep research by iteratively generating search queries, processing results, and diving deeper based on findings
 - **Intelligent Query Generation**: Uses LLMs to generate targeted search queries based on research goals and previous findings
-- **Depth & Breadth Control**: Configurable parameters to control how wide (breadth) and deep (depth) the research goes
+- **Depth, Breadth & Detail Control**: Configurable parameters to control how wide (breadth), deep (depth), and detailed (insight detail) the research goes
 - **Smart Follow-up**: Generates follow-up questions to better understand research needs
 - **Comprehensive Reports**: Produces detailed markdown reports with findings and sources
 - **Concurrent Processing**: Handles multiple searches and result processing in parallel for efficiency
@@ -146,7 +146,8 @@ You'll be prompted to:
 1. Enter your research query
 2. Specify research breadth (recommended: 3-10, default: 4)
 3. Specify research depth (recommended: 1-5, default: 2)
-4. Answer follow-up questions to refine the research direction
+4. Specify insight detail (recommended: 1-10, default: 5)
+5. Answer follow-up questions to refine the research direction
 
 The system will then:
 
