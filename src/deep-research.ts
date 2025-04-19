@@ -59,31 +59,31 @@ function calculateTokenLimit(insightDetail: number): number {
 // Reports need more tokens than individual learnings
 function calculateReportTokenLimit(insightDetail: number): number {
   // Scale more aggressively to ensure detailed reports
-  // Level 1: ~4000 tokens (concise report, ~3000 words)
-  // Level 5: ~12000 tokens (detailed report, ~9000 words)
-  // Level 10: ~24000 tokens (comprehensive report, ~18000 words)
+  // Level 1: ~8000 tokens (concise report, ~6000 words)
+  // Level 5: ~20000 tokens (detailed report, ~15000 words)
+  // Level 10: ~32000 tokens (comprehensive report, ~24000 words)
 
   if (insightDetail <= 3) {
-    // 4000-8000 tokens for levels 1-3
-    return 4000 + (insightDetail - 1) * 2000;
+    // 8000-14000 tokens for levels 1-3
+    return 8000 + (insightDetail - 1) * 3000;
   } else if (insightDetail <= 7) {
-    // 8000-16000 tokens for levels 4-7
-    return 8000 + (insightDetail - 4) * 2000;
+    // 14000-26000 tokens for levels 4-7
+    return 14000 + (insightDetail - 4) * 3000;
   } else {
-    // 16000-24000 tokens for levels 8-10
-    return 16000 + (insightDetail - 8) * 2667;
+    // 26000-32000 tokens for levels 8-10
+    return 26000 + (insightDetail - 8) * 3000;
   }
 }
 
 // Helper function to calculate the appropriate number of learnings based on insight detail
 function calculateLearningsCount(insightDetail: number, breadth: number): number {
-  // For higher detail levels, we need fewer learnings to avoid context window issues
+  // With increased token limits, we can extract more learnings even at higher detail levels
   if (insightDetail >= 8) {
-    return Math.max(2, Math.min(3, breadth - 2)); // 2-3 learnings for high detail
+    return Math.max(3, Math.min(5, breadth - 1)); // 3-5 learnings for high detail
   } else if (insightDetail >= 5) {
-    return Math.max(3, Math.min(5, breadth - 1)); // 3-5 learnings for medium detail
+    return Math.max(4, Math.min(7, breadth));     // 4-7 learnings for medium detail
   } else {
-    return Math.max(5, Math.min(8, breadth));     // 5-8 learnings for low detail
+    return Math.max(5, Math.min(10, breadth));    // 5-10 learnings for low detail
   }
 }
 
@@ -97,10 +97,10 @@ function getDetailLevelDescription(insightDetail: number): string {
 
 // Helper function to get report length based on insight detail
 function getReportLength(insightDetail: number): string {
-  if (insightDetail >= 8) return "a comprehensive, in-depth report that thoroughly covers all aspects of the topic";
-  if (insightDetail >= 5) return "a detailed report that covers the topic thoroughly";
-  if (insightDetail >= 3) return "a moderately detailed report that covers the key aspects of the topic";
-  return "a concise report that covers the essential aspects of the topic";
+  if (insightDetail >= 8) return "an extremely comprehensive, in-depth report (15,000-20,000 words) that thoroughly covers all aspects of the topic with extensive detail and analysis";
+  if (insightDetail >= 5) return "a very detailed report (8,000-15,000 words) that covers the topic thoroughly with substantial depth and breadth";
+  if (insightDetail >= 3) return "a moderately detailed report (5,000-8,000 words) that covers all key aspects of the topic with good depth";
+  return "a well-structured report (3,000-5,000 words) that covers the essential aspects of the topic with adequate detail";
 }
 
 // increase this if you have higher API rate limits
@@ -345,21 +345,24 @@ export async function writeFinalReport({
   const allSources = [...webSources, ...pubmedSources];
   const sourcesString = JSON.stringify(allSources);
 
+  // Calculate token limit for the report based on insight detail
+  const reportTokenLimit = calculateReportTokenLimit(insightDetail);
+
   // Create the report generation prompt based on insight detail
   const reportPrompt = createReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
 
   // Log that we're generating the report
-  console.log(`Generating ${detailLevel} report based on all learnings (no token limit)`);
+  console.log(`Generating ${detailLevel} report based on all learnings with token limit of ${reportTokenLimit} tokens (approx. ${Math.floor(reportTokenLimit / 1.33)} words)`);
 
-  // Generate the final report without token limits
+  // Generate the final report with explicit token limit
   const res = await generateObject({
     model: getModel(modelId),
     system: systemPrompt(),
     prompt: trimPrompt(reportPrompt),
-    // No max_tokens parameter - let the model use as many tokens as needed based on the content
+    max_tokens: reportTokenLimit, // Explicitly set a high max_tokens value
     abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
     schema: z.object({
-      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive and include ALL information from the learnings.`),
+      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive, extremely detailed, and include ALL information from the learnings. Aim for at least ${Math.floor(reportTokenLimit * 0.75)} tokens or ${Math.floor(reportTokenLimit * 0.75 / 1.33)} words.`),
     }),
   });
 
@@ -382,7 +385,12 @@ function createReportPrompt(
   learningsString: string,
   sourcesString: string
 ): string {
-  let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
+  // Calculate approximate word count target based on insight detail
+  const wordCountTarget = insightDetail >= 8 ? "15,000-20,000" :
+                         insightDetail >= 5 ? "8,000-15,000" :
+                         insightDetail >= 3 ? "5,000-8,000" : "3,000-5,000";
+
+  let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research. Your report should be approximately ${wordCountTarget} words in length to ensure comprehensive coverage of the topic.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
 
   if (insightDetail >= 7) {
     promptTemplate += `
@@ -397,6 +405,10 @@ function createReportPrompt(
     8. Maintain academic rigor throughout
     9. CRITICAL: Do not omit ANY important information from the learnings
     10. Expand each section with substantial detail, examples, and analysis
+    11. IMPORTANT: Aim for a length of approximately ${wordCountTarget} words
+    12. Significantly expand on each learning with additional context, analysis, and implications
+    13. Include detailed examples, case studies, and applications where relevant
+    14. Provide extensive background information to contextualize the topic
     `;
   } else if (insightDetail >= 4) {
     promptTemplate += `
@@ -409,6 +421,10 @@ function createReportPrompt(
     6. Consider different perspectives where relevant
     7. CRITICAL: Do not omit ANY important information from the learnings
     8. Expand each section with sufficient detail, examples, and analysis
+    9. IMPORTANT: Aim for a length of approximately ${wordCountTarget} words
+    10. Expand on each learning with additional context and analysis
+    11. Include examples and applications where relevant
+    12. Provide background information to contextualize the topic
     `;
   } else {
     promptTemplate += `
@@ -419,6 +435,9 @@ function createReportPrompt(
     4. Focus on the most important points while providing adequate detail
     5. CRITICAL: Do not omit ANY important information from the learnings
     6. Provide enough detail to make the report informative and useful
+    7. IMPORTANT: Aim for a length of approximately ${wordCountTarget} words
+    8. Expand on each learning with additional context where helpful
+    9. Include examples where they clarify concepts
     `;
   }
 
