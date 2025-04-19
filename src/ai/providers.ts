@@ -54,6 +54,7 @@ const deepSeekR1Model = fireworks
 
 // Available OpenRouter models
 export const AVAILABLE_MODELS = [
+  { id: 'google/gemma-3-27b-it', name: 'Gemma 3 27B', provider: 'Google' },
   { id: 'anthropic/claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic' },
   { id: 'anthropic/claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'Anthropic' },
   { id: 'anthropic/claude-3-haiku-20240307', name: 'Claude 3 Haiku', provider: 'Anthropic' },
@@ -71,7 +72,7 @@ export const AVAILABLE_MODELS = [
 ];
 
 // Default model to use if none is specified
-const DEFAULT_MODEL = 'anthropic/claude-3-opus-20240229';
+const DEFAULT_MODEL = 'google/gemma-3-27b-it';
 
 // Create a model instance from OpenRouter
 function createOpenRouterModel(modelId: string): LanguageModelV1 | undefined {

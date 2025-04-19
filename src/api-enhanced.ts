@@ -572,7 +572,7 @@ app.get('/api/models', async (req, res) => {
       details: errorMessage,
       // Include a fallback list of models
       fallbackModels: [
-        { id: 'anthropic/claude-3-opus-20240229', name: 'Claude 3 Opus', provider: 'Anthropic' },
+        { id: 'google/gemma-3-27b-it', name: 'Gemma 3 27B', provider: 'Google' },
         { id: 'anthropic/claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'Anthropic' },
         { id: 'openai/gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
         { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', provider: 'OpenAI' },
