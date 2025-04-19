@@ -748,32 +748,40 @@ export async function writeFinalReport({
     // Remove markdown code blocks if present
     reportMarkdown = reportMarkdown.replace(/```(?:markdown|md)?([\s\S]*?)```/g, '$1').trim();
 
-    // Remove any JSON formatting if present
-    if (reportMarkdown.startsWith('{') && reportMarkdown.endsWith('}')) {
-      try {
-        // Try to extract the reportMarkdown field from JSON
-        const jsonMatch = reportMarkdown.match(/"reportMarkdown"\s*:\s*"([\s\S]*?)"(?:,|\s*})/i);
-        if (jsonMatch && jsonMatch[1]) {
-          // Unescape any escaped quotes and newlines
-          reportMarkdown = jsonMatch[1]
-            .replace(/\\n/g, '\n')
-            .replace(/\\r/g, '\r')
-            .replace(/\\"/g, '"')
-            .replace(/\\\\/g, '\\');
-        } else {
-          // Try to parse as JSON
-          try {
-            const jsonObj = JSON.parse(reportMarkdown);
-            if (jsonObj.reportMarkdown) {
-              reportMarkdown = jsonObj.reportMarkdown;
-            }
-          } catch (e) {
-            // Not valid JSON, keep as is
+    // Try to extract JSON from the text
+    try {
+      // Check if the text contains a JSON object
+      const jsonStartIndex = reportMarkdown.indexOf('{');
+      const jsonEndIndex = reportMarkdown.lastIndexOf('}');
+
+      if (jsonStartIndex !== -1 && jsonEndIndex !== -1 && jsonEndIndex > jsonStartIndex) {
+        const jsonText = reportMarkdown.substring(jsonStartIndex, jsonEndIndex + 1);
+        try {
+          // Try to parse the JSON
+          const jsonObj = JSON.parse(jsonText);
+          if (jsonObj.reportMarkdown) {
+            // Successfully parsed JSON with reportMarkdown field
+            reportMarkdown = jsonObj.reportMarkdown;
+          }
+        } catch (e) {
+          // JSON parsing failed, try regex extraction
+          console.log('JSON parsing failed, trying regex extraction:', e);
+
+          // Try to extract the reportMarkdown field using regex
+          const jsonMatch = jsonText.match(/"reportMarkdown"\s*:\s*"([\s\S]*?)"(?:,|\s*})/i);
+          if (jsonMatch && jsonMatch[1]) {
+            // Unescape any escaped quotes and newlines
+            reportMarkdown = jsonMatch[1]
+              .replace(/\\n/g, '\n')
+              .replace(/\\r/g, '\r')
+              .replace(/\\"/g, '"')
+              .replace(/\\\\/g, '\\');
           }
         }
-      } catch (e) {
-        // Not valid JSON, keep as is
       }
+    } catch (e) {
+      // Error in JSON extraction, keep as is
+      console.log('Error in JSON extraction, keeping original text:', e);
     }
 
     // Log the approximate word count for debugging
