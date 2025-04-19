@@ -55,6 +55,26 @@ function calculateTokenLimit(insightDetail: number): number {
   }
 }
 
+// Helper function to calculate report token limit based on insight detail
+// Reports need more tokens than individual learnings
+function calculateReportTokenLimit(insightDetail: number): number {
+  // Scale exponentially for reports
+  // Level 1: ~2000 tokens (concise report)
+  // Level 5: ~8000 tokens (detailed report)
+  // Level 10: ~20000 tokens (comprehensive report)
+
+  if (insightDetail <= 3) {
+    // 2000-4000 tokens for levels 1-3
+    return 2000 + (insightDetail - 1) * 1000;
+  } else if (insightDetail <= 7) {
+    // 4000-12000 tokens for levels 4-7
+    return 4000 + (insightDetail - 4) * 2000;
+  } else {
+    // 12000-20000 tokens for levels 8-10
+    return 12000 + (insightDetail - 8) * 2667;
+  }
+}
+
 // Helper function to calculate the appropriate number of learnings based on insight detail
 function calculateLearningsCount(insightDetail: number, breadth: number): number {
   // For higher detail levels, we need fewer learnings to avoid context window issues
@@ -203,6 +223,7 @@ async function processSerpResult({
     abortSignal: AbortSignal.timeout(180_000), // Longer timeout for detailed generation
     system: systemPrompt(),
     prompt: learningPrompt,
+    max_tokens: tokenLimit * adjustedNumLearnings, // Set max tokens based on insight detail
     schema,
   });
 
@@ -325,11 +346,16 @@ export async function writeFinalReport({
   // Create the report generation prompt based on insight detail
   const reportPrompt = createReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
 
+  // Calculate the appropriate token limit for the report
+  const reportTokenLimit = calculateReportTokenLimit(insightDetail);
+
   // Generate the final report
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
     prompt: trimPrompt(reportPrompt),
+    max_tokens: reportTokenLimit, // Set max tokens based on insight detail
+    abortSignal: AbortSignal.timeout(300_000), // Longer timeout for detailed reports
     schema: z.object({
       reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations`),
     }),
@@ -353,9 +379,10 @@ function createReportPrompt(
   let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
 
   if (insightDetail >= 7) {
+    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
     promptTemplate += `
     Your report MUST:
-    1. Be extremely detailed and comprehensive (${reportLength} of content)
+    1. Be extremely detailed and comprehensive (${reportLength} of content, approximately ${wordCount} words)
     2. Include ALL the learnings from the research
     3. Be well-structured with clear sections, subsections, and a logical flow
     4. Include an executive summary at the beginning
@@ -363,24 +390,29 @@ function createReportPrompt(
     6. Cover multiple perspectives and approaches
     7. Discuss implications, applications, and future directions
     8. Maintain academic rigor throughout
+    9. IMPORTANT: The report should be very detailed and lengthy (${wordCount}+ words)
     `;
   } else if (insightDetail >= 4) {
+    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
     promptTemplate += `
     Your report should:
-    1. Be detailed and thorough (${reportLength} of content)
+    1. Be detailed and thorough (${reportLength} of content, approximately ${wordCount} words)
     2. Incorporate the key information from the learnings
     3. Have a clear structure with appropriate sections
     4. Include an executive summary
     5. Provide analysis and insights
     6. Consider different perspectives where relevant
+    7. IMPORTANT: The report should be detailed and substantial (${wordCount}+ words)
     `;
   } else {
+    const wordCount = Math.floor(calculateReportTokenLimit(insightDetail) * 0.75); // Approximate words based on tokens
     promptTemplate += `
     Your report should:
-    1. Be clear and concise (${reportLength} of content)
+    1. Be clear and concise (${reportLength} of content, approximately ${wordCount} words)
     2. Capture the essential information from the learnings
     3. Have a logical structure
     4. Focus on the most important points
+    5. IMPORTANT: The report should be concise but complete (${wordCount}+ words)
     `;
   }
 
