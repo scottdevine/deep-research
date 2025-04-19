@@ -31,7 +31,7 @@ const customModel = process.env.CUSTOM_MODEL
 
 // Models
 
-const o3MiniModel = openai?.('o3-mini', {
+const gpt41MiniModel = openai?.('gpt-4.1-mini-2025-04-14', {
   reasoningEffort: 'medium',
   structuredOutputs: true,
 });
@@ -50,7 +50,7 @@ export function getModel(): LanguageModelV1 {
     return customModel;
   }
 
-  const model = deepSeekR1Model ?? o3MiniModel;
+  const model = deepSeekR1Model ?? gpt41MiniModel;
   if (!model) {
     throw new Error('No model found');
   }
