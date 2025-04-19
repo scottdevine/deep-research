@@ -1041,7 +1041,7 @@ export async function deepResearch({
           // Search PubMed if enabled
           let newPubMedArticles: PubMedArticle[] = [];
           if (process.env.INCLUDE_PUBMED_SEARCH === 'true' && process.env.PUBMED_API_KEY) {
-            const pubMedResult = await searchPubMed(serpQuery.query, 5, true, meshRestrictiveness);
+            const pubMedResult = await searchPubMed(serpQuery.query, 5, true, meshRestrictiveness, modelId);
             newPubMedArticles = pubMedResult.articles;
           }
 

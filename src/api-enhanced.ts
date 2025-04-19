@@ -152,6 +152,9 @@ app.post('/api/research', async (req: Request, res: Response) => {
           }
         }, 5000);
 
+        // Log the model ID for debugging
+        console.log('Using model ID for research:', modelId);
+
         // Run the research
         const { learnings, visitedUrls, pubMedArticles } = await deepResearch({
           query: finalQuery,
@@ -159,6 +162,7 @@ app.post('/api/research', async (req: Request, res: Response) => {
           depth,
           meshRestrictiveness: meshRestrictivenessEnum,
           insightDetail, // Pass the insightDetail parameter
+          modelId, // Pass the model parameter
           onProgress: (progress) => {
             // Update progress based on the current stage
             if (progress.currentDepth === depth) {

@@ -96,14 +96,18 @@ function createOpenRouterModel(modelId: string): LanguageModelV1 | undefined {
 }
 
 export function getModel(modelId?: string): LanguageModelV1 {
+  console.log('getModel called with modelId:', modelId);
+
   // If a specific model ID is provided, try to use OpenRouter
   if (modelId && openrouter) {
+    console.log('Using specified model:', modelId);
     const openRouterModel = createOpenRouterModel(modelId);
     if (openRouterModel) return openRouterModel;
   }
 
   // If OpenRouter is available but no specific model is requested, use the default
   if (openrouter && !modelId) {
+    console.log('Using default model:', DEFAULT_MODEL);
     const defaultOpenRouterModel = createOpenRouterModel(DEFAULT_MODEL);
     if (defaultOpenRouterModel) return defaultOpenRouterModel;
   }

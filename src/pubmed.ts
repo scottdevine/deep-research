@@ -95,7 +95,7 @@ export enum MeshRestrictiveness {
 }
 
 // Convert natural language query to MeSH terms
-export async function convertToMeshTerms(query: string, restrictiveness: MeshRestrictiveness = MeshRestrictiveness.MEDIUM): Promise<string> {
+export async function convertToMeshTerms(query: string, restrictiveness: MeshRestrictiveness = MeshRestrictiveness.MEDIUM, modelId?: string): Promise<string> {
   try {
     log(`Converting query to MeSH terms: ${query}`);
 
@@ -118,7 +118,7 @@ export async function convertToMeshTerms(query: string, restrictiveness: MeshRes
     try {
       // First try with structured JSON output
       const res = await generateObject({
-        model: getModel(),
+        model: getModel(modelId),
         system: systemPrompt(),
         prompt: `You are a medical research expert specializing in PubMed searches. Convert the following natural language query into an optimized PubMed search query using appropriate MeSH (Medical Subject Headings) terms. Format the query with proper Boolean operators (AND, OR, NOT) and use MeSH terms with [MeSH] tags where appropriate. Include relevant subheadings and qualifiers if needed.
 
@@ -138,7 +138,7 @@ Provide ONLY the formatted PubMed search query with MeSH terms as a JSON object 
       // Fallback to text generation
       log('Falling back to text generation for MeSH terms');
       const response = await generateText({
-        model: getModel(),
+        model: getModel(modelId),
         system: systemPrompt(),
         prompt: `You are a medical research expert specializing in PubMed searches. Convert the following natural language query into an optimized PubMed search query using appropriate MeSH (Medical Subject Headings) terms. Format the query with proper Boolean operators (AND, OR, NOT) and use MeSH terms with [MeSH] tags where appropriate. Include relevant subheadings and qualifiers if needed.
 
@@ -188,7 +188,8 @@ export async function searchPubMed(
   query: string,
   limit: number = 5,
   useMeshTerms: boolean = true,
-  meshRestrictiveness: MeshRestrictiveness = MeshRestrictiveness.MEDIUM
+  meshRestrictiveness: MeshRestrictiveness = MeshRestrictiveness.MEDIUM,
+  modelId?: string
 ): Promise<PubMedSearchResponse> {
   if (!process.env.PUBMED_API_KEY) {
     log('PubMed API key not found. Skipping PubMed search.');
@@ -208,7 +209,7 @@ export async function searchPubMed(
       const envRestrictiveness = process.env.MESH_RESTRICTIVENESS as MeshRestrictiveness;
       const effectiveRestrictiveness = envRestrictiveness || meshRestrictiveness;
 
-      searchQuery = await convertToMeshTerms(query, effectiveRestrictiveness);
+      searchQuery = await convertToMeshTerms(query, effectiveRestrictiveness, modelId);
     }
 
     log(`Searching PubMed for: ${searchQuery}`);
