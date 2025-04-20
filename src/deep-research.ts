@@ -31,10 +31,19 @@ export interface DetailedLearning {
   keyPoints?: string[];    // Optional list of key points
 }
 
+// Interface for detailed learning structure with sources
+export interface DetailedLearningWithSources {
+  title: string;
+  content: string;
+  sources: string[];
+  keyPoints: string[];
+}
+
 type ResearchResult = {
   learnings: string[];
   visitedUrls: string[];
   pubMedArticles?: PubMedArticle[];
+  detailedLearnings?: DetailedLearningWithSources[];
 };
 
 // Helper function to calculate token limit based on insight detail
@@ -60,19 +69,19 @@ function calculateTokenLimit(insightDetail: number): number {
 // Reports need more tokens than individual learnings
 function calculateReportTokenLimit(insightDetail: number): number {
   // Scale more aggressively to ensure detailed reports
-  // Level 1: ~4000 tokens (concise report, ~3000 words)
-  // Level 5: ~12000 tokens (detailed report, ~9000 words)
-  // Level 10: ~24000 tokens (comprehensive report, ~18000 words)
+  // Level 1: ~8000 tokens (concise report, ~6000 words)
+  // Level 5: ~24000 tokens (detailed report, ~18000 words)
+  // Level 10: ~48000 tokens (comprehensive report, ~36000 words)
 
   if (insightDetail <= 3) {
-    // 4000-8000 tokens for levels 1-3
-    return 4000 + (insightDetail - 1) * 2000;
+    // 8000-16000 tokens for levels 1-3
+    return 8000 + (insightDetail - 1) * 4000;  // Doubled
   } else if (insightDetail <= 7) {
-    // 8000-16000 tokens for levels 4-7
-    return 8000 + (insightDetail - 4) * 2000;
+    // 16000-32000 tokens for levels 4-7
+    return 16000 + (insightDetail - 4) * 4000; // Doubled
   } else {
-    // 16000-24000 tokens for levels 8-10
-    return 16000 + (insightDetail - 8) * 2667;
+    // 32000-48000 tokens for levels 8-10
+    return 32000 + (insightDetail - 8) * 5334; // Doubled
   }
 }
 
@@ -344,21 +353,51 @@ export async function writeFinalReport({
   const allSources = [...webSources, ...pubmedSources];
   const sourcesString = JSON.stringify(allSources);
 
-  // Create the enhanced report generation prompt based on insight detail
-  const reportPrompt = createEnhancedReportPrompt(prompt, reportLength, insightDetail, detailLevel, learningsString, sourcesString);
+  // Generate a detailed outline first
+  console.log(`Generating detailed report outline...`);
+  let outlineString = '';
+  let detailedLearningsArray: DetailedLearningWithSources[] = [];
+
+  // Use detailed learnings if available (from pubMedArticles parameter)
+  if (pubMedArticles && pubMedArticles.length > 0 && insightDetail >= 5) {
+    // Extract detailed learnings from pubMedArticles parameter if it contains them
+    if ('detailedLearnings' in pubMedArticles) {
+      detailedLearningsArray = (pubMedArticles as any).detailedLearnings || [];
+    }
+  }
+
+  const outline = await generateReportOutline(prompt, learnings, detailedLearningsArray);
+  outlineString = JSON.stringify(outline, null, 2);
+
+  // Create the enhanced report generation prompt based on insight detail and outline
+  const reportPrompt = createReportPrompt(
+    prompt,
+    reportLength,
+    insightDetail,
+    detailLevel,
+    learningsString,
+    sourcesString,
+    outlineString // Add outline to the prompt
+  );
 
   // Log that we're generating the report
-  console.log(`Generating ${detailLevel} report based on all learnings (no token limit)`);
+  console.log(`Generating ${detailLevel} report based on detailed outline and all learnings`);
 
-  // Generate the final report without token limits
+  // Generate the final report with explicit parameters for maximum detail
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
     prompt: trimPrompt(reportPrompt),
-    // No max_tokens parameter - let the model use as many tokens as needed based on the content
-    abortSignal: AbortSignal.timeout(900_000), // Very long timeout (15 minutes) for detailed reports
+    max_tokens: insightDetail >= 8 ? 0 : (insightDetail >= 5 ? 32000 : 16000), // 0 means no limit for high detail
+    temperature: 0.7, // Add temperature for more varied output
+    abortSignal: AbortSignal.timeout(1800_000), // 30 minutes for detailed reports
     schema: z.object({
-      reportMarkdown: z.string().describe(`${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations. The report MUST be comprehensive and include ALL information from the learnings.`),
+      reportMarkdown: z.string().describe(
+        `${detailLevel} final report (${reportLength}) on the topic in Markdown with proper citations.
+        The report MUST be comprehensive, AT LEAST 10,000 WORDS IN LENGTH, and include ALL information from the learnings.
+        EACH MAJOR SECTION should be AT LEAST 1000 WORDS.
+        DO NOT summarize topics in 1-2 sentences. Provide comprehensive analysis with multiple detailed paragraphs per topic.`
+      ),
     }),
   });
 
@@ -372,6 +411,54 @@ export async function writeFinalReport({
   return res.object.reportMarkdown + referencesSection;
 }
 
+// Generate a detailed report outline before final generation
+async function generateReportOutline(prompt: string, learnings: string[], detailedLearnings: DetailedLearningWithSources[] = []) {
+  const learningsString = learnings
+    .map(learning => `<learning>${learning}</learning>`)
+    .join('\n\n');
+
+  // Include detailed learnings if available
+  let detailedLearningsString = '';
+  if (detailedLearnings.length > 0) {
+    detailedLearningsString = detailedLearnings
+      .map(learning => `<detailed_learning>
+        <title>${learning.title}</title>
+        <content>${learning.content}</content>
+        <key_points>${learning.keyPoints.join('\n')}</key_points>
+        <sources>${learning.sources.join(', ')}</sources>
+      </detailed_learning>`)
+      .join('\n\n');
+  }
+
+  const res = await generateObject({
+    model: getModel(),
+    system: systemPrompt(),
+    prompt: `Based on the following research prompt and learnings, create a detailed outline for a comprehensive report.
+    The outline should include at least 10-15 major sections with 3-5 subsections each.
+    Each section and subsection should have a clear description of what content will be included.
+
+    <prompt>${prompt}</prompt>
+
+    <learnings>${learningsString}</learnings>
+
+    ${detailedLearningsString ? `<detailed_learnings>${detailedLearningsString}</detailed_learnings>` : ''}
+
+    Create a comprehensive, well-structured outline that covers all aspects of the topic in depth.`,
+    schema: z.object({
+      reportOutline: z.array(z.object({
+        sectionTitle: z.string(),
+        sectionDescription: z.string(),
+        subsections: z.array(z.object({
+          title: z.string(),
+          content: z.string().describe("Detailed description of what this subsection will cover")
+        }))
+      }))
+    }),
+  });
+
+  return res.object.reportOutline;
+}
+
 // Helper function to create the report prompt
 function createReportPrompt(
   prompt: string,
@@ -379,9 +466,15 @@ function createReportPrompt(
   insightDetail: number,
   detailLevel: string,
   learningsString: string,
-  sourcesString: string
+  sourcesString: string,
+  outlineString?: string
 ): string {
   let promptTemplate = `Given the following prompt from the user, write a ${detailLevel} final report (${reportLength}) on the topic using the learnings from research.\n\n<prompt>${prompt}</prompt>\n\nHere are all the learnings from previous research:\n\n<learnings>\n${learningsString}\n</learnings>\n\n`;
+
+  // Add outline if available
+  if (outlineString) {
+    promptTemplate += `\nHere is a detailed outline for the report structure. Follow this outline closely to ensure comprehensive coverage of all aspects of the topic:\n\n<outline>\n${outlineString}\n</outline>\n\n`;
+  }
 
   if (insightDetail >= 7) {
     promptTemplate += `
@@ -396,6 +489,16 @@ function createReportPrompt(
     8. Maintain academic rigor throughout
     9. CRITICAL: Do not omit ANY important information from the learnings
     10. Expand each section with substantial detail, examples, and analysis
+
+    ADDITIONAL CRITICAL REQUIREMENTS:
+    1. Your report MUST be at least 10,000 words in length to ensure comprehensive coverage
+    2. You MUST include detailed examples, case studies, and specific data points whenever available
+    3. EACH MAJOR SECTION must be at least 1000 words with 5-7 detailed paragraphs
+    4. DO NOT summarize topics in 1-2 sentences - provide comprehensive analysis
+    5. Include specific statistics, quotes, and evidence from sources
+    6. Structure each section with clear subsections and logical flow
+    7. Include detailed analysis comparing different perspectives on each topic
+    8. CRITICAL: Treat this as a professional research report requiring maximum detail and depth
     `;
   } else if (insightDetail >= 4) {
     promptTemplate += `
@@ -486,6 +589,7 @@ export async function deepResearch({
   meshRestrictiveness = MeshRestrictiveness.MEDIUM,
   insightDetail = 5,
   onProgress,
+  detailedLearnings = [],
 }: {
   query: string;
   breadth: number;
@@ -496,6 +600,7 @@ export async function deepResearch({
   meshRestrictiveness?: MeshRestrictiveness;
   insightDetail?: number;
   onProgress?: (progress: ResearchProgress) => void;
+  detailedLearnings?: DetailedLearningWithSources[];
 }): Promise<ResearchResult> {
   const progress: ResearchProgress = {
     currentDepth: depth,
@@ -559,8 +664,18 @@ export async function deepResearch({
             breadth,
             insightDetail,
           });
+
+          // Handle both simple and detailed learnings
           const allLearnings = [...learnings, ...newLearnings.learnings];
           const allUrls = [...visitedUrls, ...newUrls];
+
+          // Track detailed learnings if available
+          let allDetailedLearnings: DetailedLearningWithSources[] = [];
+          if (newLearnings.detailedLearnings) {
+            // Get existing detailed learnings if available
+            const existingDetailedLearnings = results.flatMap(r => r.detailedLearnings || []);
+            allDetailedLearnings = [...existingDetailedLearnings, ...newLearnings.detailedLearnings];
+          }
 
           if (newDepth > 0) {
             log(`Researching deeper, breadth: ${newBreadth}, depth: ${newDepth}`);
@@ -587,6 +702,8 @@ export async function deepResearch({
               meshRestrictiveness,
               insightDetail,
               onProgress,
+              // Pass detailed learnings if available
+              detailedLearnings: allDetailedLearnings.length > 0 ? allDetailedLearnings : undefined,
             });
           } else {
             reportProgress({
@@ -598,6 +715,7 @@ export async function deepResearch({
               learnings: allLearnings,
               visitedUrls: allUrls,
               pubMedArticles: allPubMedArticles,
+              detailedLearnings: allDetailedLearnings.length > 0 ? allDetailedLearnings : undefined,
             };
           }
         } catch (e: any) {
@@ -610,6 +728,7 @@ export async function deepResearch({
             learnings: [],
             visitedUrls: [],
             pubMedArticles: [],
+            detailedLearnings: [],
           };
         }
       }),
@@ -627,9 +746,13 @@ export async function deepResearch({
     return acc;
   }, [] as PubMedArticle[]);
 
+  // Collect all detailed learnings if available
+  const allDetailedLearnings = results.flatMap(r => r.detailedLearnings || []);
+
   return {
     learnings: [...new Set(results.flatMap(r => r.learnings))],
     visitedUrls: [...new Set(results.flatMap(r => r.visitedUrls))],
     pubMedArticles: uniquePubMedArticles,
+    detailedLearnings: allDetailedLearnings.length > 0 ? allDetailedLearnings : undefined,
   };
 }
