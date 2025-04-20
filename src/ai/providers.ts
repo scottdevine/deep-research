@@ -32,7 +32,6 @@ const customModel = process.env.CUSTOM_MODEL
 // Models
 
 const gpt41MiniModel = openai?.('gpt-4.1-mini-2025-04-14', {
-  reasoningEffort: 'medium',
   structuredOutputs: true,
 });
 
