@@ -11,7 +11,9 @@ The Deep Research system follows a recursive, multi-stage process to conduct com
 3. **Content Retrieval**: Web content and academic articles are retrieved for each search query
 4. **Learning Extraction**: Key insights ("learnings") are extracted from the retrieved content
 5. **Recursive Exploration**: Follow-up queries are generated and the process repeats
-6. **Report Generation**: A comprehensive report is generated from all accumulated learnings
+6. **Learning Processing**: Learnings are processed using hierarchical aggregation and progressive summarization
+7. **Content Selection**: Important content is selected based on relevance and importance
+8. **Report Generation**: A comprehensive report is generated using either chunked or template-based approaches
 
 ## Key Parameters
 
@@ -138,54 +140,120 @@ return deepResearch({
 });
 ```
 
-### 6. Report Generation
+### 6. Learning Processing
 
-Once all queries at all depth levels have been processed:
+After all queries at all depth levels have been processed, the system applies advanced processing to the learnings:
 
-1. **Learning Compilation**: All learnings from all queries and all depth levels are compiled
-2. **Source Preparation**: All sources (web pages and PubMed articles) are prepared for citation
-3. **Report Length Determination**: The system determines the appropriate report length based on the Insight Detail parameter
-4. **Report Generation**: The LLM generates a report with a level of detail corresponding to the Insight Detail parameter
+1. **Hierarchical Aggregation**: Learnings are organized into a hierarchical structure based on topics and relationships
+2. **Progressive Summarization**: Learnings are summarized at different levels of detail to create a layered representation
 
 ```javascript
-const report = await writeFinalReport({
-  prompt: query,
+// Apply hierarchical aggregation to learnings
+const hierarchicalLearnings = await aggregateHierarchicalLearnings(learnings);
+
+// Apply progressive summarization
+const summarizedLearnings = await progressiveSummarization(
   learnings,
+  Math.max(...learnings.map(l => l.metadata.depth))
+);
+```
+
+### 7. Content Selection
+
+The system selects the most important content based on:
+
+1. **Importance Rating**: Each learning has an importance rating indicating how central it is to the research topic
+2. **Content Size Limits**: The system calculates the maximum content size based on the Insight Detail parameter
+3. **Selection Algorithm**: The system selects content based on importance, ensuring comprehensive coverage
+
+```javascript
+const maxContentSize = calculateMaxContentSize(insightDetail);
+const selectedLearnings = selectImportantContent(
+  summarizedLearnings.layeredLearnings,
+  maxContentSize
+);
+```
+
+### 8. Report Generation
+
+The system uses two different approaches for report generation based on the Insight Detail parameter:
+
+#### High Detail Reports (Insight Detail ≥ 7)
+
+For high detail reports, the system uses a chunked report generation approach:
+
+1. **Report Outline Creation**: A detailed outline is created with major sections and subsections
+2. **Learning Categorization**: Learnings are categorized according to the outline sections
+3. **Section Processing**: Each section is processed independently with its relevant learnings
+4. **Executive Summary Generation**: An executive summary is generated based on all sections
+5. **Report Assembly**: The final report is assembled with proper structure and references
+
+```javascript
+// For high detail levels, use chunked report generation
+finalReport = await writeFinalReportWithChunking({
+  prompt,
+  learnings: selectedLearnings,
   visitedUrls,
   pubMedArticles,
-  insightDetail // Controls the depth and comprehensiveness of the report
+  insightDetail,
 });
+```
+
+#### Lower Detail Reports (Insight Detail < 7)
+
+For lower detail reports, the system uses a template-based approach:
+
+1. **Domain Identification**: The research domain is identified (scientific, medical, business, etc.)
+2. **Template Selection**: An appropriate report template is selected based on the domain
+3. **Learning Mapping**: Learnings are mapped to template sections
+4. **Section Generation**: Content is generated for each section based on the mapped learnings
+5. **Report Assembly**: The final report is assembled according to the template structure
+
+```javascript
+// For lower detail levels, use template-based report generation
+const domainType = await identifyResearchDomain(prompt, selectedLearnings);
+finalReport = await templateBasedReportGeneration(
+  prompt,
+  selectedLearnings,
+  insightDetail,
+  visitedUrls,
+  pubMedArticles
+);
 ```
 
 The report length and detail level are determined by the Insight Detail parameter:
 
-- **Low Detail (1-3)**: Concise, focused report (3-7 pages)
-- **Medium Detail (4-7)**: Detailed, informative report (7-30 pages)
-- **High Detail (8-10)**: Comprehensive, in-depth report (30-50 pages)
+- **Low Detail (1-3)**: Concise, focused report (approximately 3,000-5,000 words)
+- **Medium Detail (4-7)**: Detailed, informative report (approximately 5,000-7,000 words)
+- **High Detail (8-10)**: Comprehensive, in-depth report (approximately 7,000-10,000 words)
 
-The LLM is instructed to:
-- Create a report with the appropriate level of detail based on the Insight Detail parameter
-- Include all learnings from the research
-- Structure the report with clear sections and subsections
-- Include an executive summary
-- Provide analysis appropriate to the detail level
-- Cover multiple perspectives and approaches (especially at higher detail levels)
-- Discuss implications, applications, and future directions
-- Cite all sources properly
+The system ensures that all sections have proper content, even when no specific learnings are available for a section, by generating content based on the section title and purpose.
 
 ## Learning Extraction Deep Dive
 
 The learning extraction process is a critical component of the system. Here's a deeper look at how it works:
 
-### What is a "Learning"?
+### What is a "Structured Learning"?
 
-A "learning" is an insight that captures key information from the research. The structure and detail level of learnings vary based on the Insight Detail parameter:
+A "structured learning" is a comprehensive insight that captures key information from the research in a structured format. Each structured learning includes:
+
+- **ID**: A unique identifier for the learning
+- **Title**: A descriptive title for the learning
+- **Content**: The detailed content exploring this learning
+- **Sources**: References to specific sources used
+- **Key Points**: Key points extracted from this learning
+- **Importance**: A rating indicating how central this learning is to the research topic
+- **Topics**: Primary topics this learning relates to
+- **Metadata**: Additional information including depth, confidence score, and content type
+
+The structure and detail level of learnings vary based on the Insight Detail parameter:
 
 #### Low Detail Learnings (Insight Detail 1-3)
 - Concise, information-dense statements (1000-2000 tokens, ~1-2 pages)
 - Contain specific, factual information
 - Include entities, metrics, and dates when relevant
 - Focus on essential information
+- Include 1-3 key topics
 
 #### Medium Detail Learnings (Insight Detail 4-7)
 - Detailed, informative content (2000-6000 tokens, ~3-6 pages)
@@ -193,6 +261,7 @@ A "learning" is an insight that captures key information from the research. The 
 - Provide analysis beyond just summarizing information
 - Reference specific sources
 - Have a logical structure
+- Include 3-7 key topics
 
 #### High Detail Learnings (Insight Detail 8-10)
 - Comprehensive, in-depth analysis (6000-10000 tokens, ~6-10 pages)
@@ -202,6 +271,7 @@ A "learning" is an insight that captures key information from the research. The 
 - Compare and contrast different viewpoints
 - Incorporate specific examples, case studies, and applications
 - Cite specific sources for key information
+- Include 5-10 key topics
 
 ### Example Learnings
 
@@ -259,8 +329,9 @@ JAK inhibitors represent a significant advancement in RA treatment, offering a p
 2. **Content Formatting**: The content is formatted for the LLM
 3. **Parameter Calculation**: The system calculates the appropriate token limit and number of learnings based on the Insight Detail parameter
 4. **LLM Analysis**: The LLM analyzes the content to identify key insights
-5. **Learning Generation**: The LLM generates learnings with the appropriate level of detail
-6. **Learning Storage**: The learnings are stored for later use in report generation
+5. **Structured Learning Generation**: The LLM generates structured learnings with the appropriate level of detail
+6. **Metadata Addition**: Each learning is enriched with metadata including depth, confidence score, and content type
+7. **Learning Storage**: The structured learnings are stored for later processing and report generation
 
 ### Learning Extraction Prompt
 
@@ -288,38 +359,53 @@ For each learning, include a list of sources that contributed to that learning.
 
 For medium detail (4-7), the prompt is adjusted to request more concise but still detailed learnings, and for low detail (1-3), the prompt requests brief, focused learnings.
 
-## Report Generation Deep Dive
+## Advanced Report Generation Deep Dive
 
-The final report generation is where all the accumulated learnings are synthesized into a comprehensive document. The level of detail in the report is controlled by the Insight Detail parameter.
+The enhanced report generation process uses advanced techniques to create comprehensive, well-structured reports. The system employs two different approaches based on the Insight Detail parameter.
 
-### Report Generation Process
+### Chunked Report Generation Process (High Detail)
 
-1. **Learning Compilation**: All learnings from all queries and depth levels are compiled
-2. **Source Preparation**: All sources are prepared for citation
-3. **Report Length Determination**: The system determines the appropriate report length based on the Insight Detail parameter
-4. **LLM Synthesis**: The LLM synthesizes the learnings into a coherent report with the appropriate level of detail
-5. **Citation Addition**: Citations are added to all factual statements
-6. **References Section**: A references section is added with all sources
+For high detail reports (Insight Detail ≥ 7), the system uses a chunked approach:
+
+1. **Report Outline Creation**: A detailed outline is created with major sections and subsections
+2. **Learning Categorization**: Learnings are categorized according to the outline sections
+3. **Section Processing**: Each section is processed independently with its relevant learnings
+4. **Executive Summary Generation**: An executive summary is generated based on all sections
+5. **Report Assembly**: The final report is assembled with proper structure and references
+
+### Template-Based Report Generation Process (Lower Detail)
+
+For lower detail reports (Insight Detail < 7), the system uses a template-based approach:
+
+1. **Domain Identification**: The research domain is identified (scientific, medical, business, etc.)
+2. **Template Selection**: An appropriate report template is selected based on the domain
+3. **Learning Mapping**: Learnings are mapped to template sections
+4. **Section Generation**: Content is generated for each section based on the mapped learnings
+5. **Report Assembly**: The final report is assembled according to the template structure
+
+### Empty Section Handling
+
+The system ensures that all sections have proper content, even when no specific learnings are available for a section, by generating content based on the section title and purpose. This ensures that the report is comprehensive and well-structured, with no empty sections.
 
 ### Report Length and Detail
 
 The Insight Detail parameter controls the length and detail level of the final report:
 
 #### Low Detail Reports (Insight Detail 1-3)
-- Concise, focused reports (3-7 pages)
+- Concise, focused reports (approximately 3,000-5,000 words)
 - Essential information with minimal elaboration
 - Clear structure with basic sections
 - Focus on the most important points
 
 #### Medium Detail Reports (Insight Detail 4-7)
-- Detailed, informative reports (7-30 pages)
+- Detailed, informative reports (approximately 5,000-7,000 words)
 - Thorough coverage of the topic
 - Well-structured with appropriate sections
 - Executive summary and analysis
 - Different perspectives where relevant
 
 #### High Detail Reports (Insight Detail 8-10)
-- Comprehensive, in-depth reports (30-50 pages)
+- Comprehensive, in-depth reports (approximately 7,000-10,000 words)
 - Exhaustive coverage of all aspects of the topic
 - Sophisticated structure with sections, subsections, and logical flow
 - Detailed executive summary
@@ -360,6 +446,22 @@ For medium detail (4-7), the prompt is adjusted to request a more concise but st
 
 3. **Processing Time**: Higher Insight Detail levels require more processing time due to the increased complexity and length of the generated content.
 
+### Architectural Improvements
+
+1. **Structured Learning Representation**: Learnings are now represented as structured objects with metadata, enabling more sophisticated processing and analysis.
+
+2. **Hierarchical Learning Aggregation**: Learnings are organized into a hierarchical structure based on topics and relationships, providing a more coherent understanding of the research domain.
+
+3. **Progressive Summarization**: Learnings are summarized at different levels of detail to create a layered representation, allowing for more efficient processing and presentation.
+
+4. **Importance-Based Content Selection**: Content is selected based on importance ratings, ensuring that the most relevant information is included in the report.
+
+5. **Chunked Report Generation**: For high detail reports, the system uses a chunked approach that processes each section independently, allowing for more detailed and comprehensive reports.
+
+6. **Template-Based Report Generation**: For lower detail reports, the system uses a template-based approach that adapts to the research domain, providing a more structured and coherent report.
+
+7. **Empty Section Handling**: The system ensures that all sections have proper content, even when no specific learnings are available for a section, by generating content based on the section title and purpose.
+
 ### Recent Improvements
 
 1. **Insight Detail Parameter**: The addition of the Insight Detail parameter (scale 1-10) allows users to control the depth and comprehensiveness of research insights and reports.
@@ -368,7 +470,9 @@ For medium detail (4-7), the prompt is adjusted to request a more concise but st
 
 3. **Scaled Token Limits**: Token limits for learnings now scale based on the Insight Detail parameter (1000-10000 tokens), allowing for much more detailed and comprehensive insights.
 
-4. **Enhanced Report Generation**: Reports are now generated with varying levels of detail (3-50 pages) based on the Insight Detail parameter.
+4. **Enhanced Report Generation**: Reports are now generated with varying levels of detail (3,000-10,000 words) based on the Insight Detail parameter.
+
+5. **Schema Validation Compatibility**: The system has been updated to ensure compatibility with OpenAI's schema validation requirements, preventing errors during learning extraction.
 
 ### Potential Future Improvements
 
@@ -382,6 +486,8 @@ For medium detail (4-7), the prompt is adjusted to request a more concise but st
 
 ## Conclusion
 
-The Deep Research system uses a sophisticated, multi-stage process to conduct comprehensive research on a given topic. By generating multiple search queries, retrieving relevant content, extracting key learnings, and recursively exploring the topic, the system can produce detailed, well-cited reports on complex topics.
+The Deep Research system uses a sophisticated, multi-stage process to conduct comprehensive research on a given topic. By generating multiple search queries, retrieving relevant content, extracting structured learnings, and recursively exploring the topic, the system can produce detailed, well-cited reports on complex topics.
 
-The system's architecture balances depth and breadth of research, information density, and computational efficiency to deliver high-quality research reports.
+The enhanced architecture with hierarchical aggregation, progressive summarization, importance-based content selection, and advanced report generation techniques ensures that the system produces high-quality, comprehensive reports that reflect the extensive data collected during the research process.
+
+The system balances depth and breadth of research, information density, and computational efficiency to deliver research reports that meet the user's specific needs, with the level of detail controlled by the Insight Detail parameter.
