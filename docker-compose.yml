@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   deep-research:
     container_name: deep-research
@@ -17,7 +15,7 @@ services:
     container_name: crawl4ai-service
     build: ./crawl4ai-service
     ports:
-      - "8001:8000"
+      - "8765:8000"
     volumes:
       - ./crawl4ai-service/cache:/app/cache
     environment:

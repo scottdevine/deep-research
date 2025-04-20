@@ -63,7 +63,7 @@ http://localhost:3002
 To verify that the Crawl4AI integration is working correctly:
 
 ```bash
-curl http://localhost:8001/health
+curl http://localhost:8765/health
 ```
 
 You should see a response like:
@@ -187,7 +187,7 @@ docker-compose up -d
 If you see errors like "Connection refused" or "ECONNREFUSED", make sure the Crawl4AI service is running:
 
 ```bash
-curl http://localhost:8001/health
+curl http://localhost:8765/health
 ```
 
 Should return a health status response. If not, check the service logs:
