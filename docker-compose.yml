@@ -1,3 +1,5 @@
+version: '3'
+
 services:
   deep-research:
     container_name: deep-research
@@ -5,6 +7,20 @@ services:
     env_file:
       - .env.local
     volumes:
-      -  ./:/app/
+      - ./:/app/
     tty: true
     stdin_open: true
+    depends_on:
+      - crawl4ai
+
+  crawl4ai:
+    container_name: crawl4ai-service
+    build: ./crawl4ai-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./crawl4ai-service/cache:/app/cache
+    environment:
+      - ENVIRONMENT=production
+      - CACHE_MODE=USE_CACHE
+    restart: unless-stopped

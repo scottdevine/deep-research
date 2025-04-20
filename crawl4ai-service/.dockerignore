@@ -1,0 +1,26 @@
+# Python virtual environments
+venv/
+venv_system/
+
+# Logs
+*.log
+
+# Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo

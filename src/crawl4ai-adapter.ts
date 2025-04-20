@@ -35,6 +35,9 @@ export class Crawl4AIAdapter {
   private mockMode: boolean;
 
   constructor(options: { baseUrl?: string; mockMode?: boolean } = {}) {
+    // Use the CRAWL4AI_SERVICE_URL environment variable if available, otherwise use the provided baseUrl or default
+    // When running in Docker, this should be set to "http://crawl4ai:8000"
+    // When running locally, this should be set to "http://localhost:8000"
     this.baseUrl = options.baseUrl || process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000';
 
     // Explicitly set mockMode to false unless explicitly set to true in options
@@ -45,6 +48,8 @@ export class Crawl4AIAdapter {
     if (this.mockMode) {
       console.warn('[Crawl4AI] WARNING: Mock mode is enabled. This should NEVER be used in production.');
     }
+
+    console.log(`[Crawl4AI] Initialized with baseUrl: ${this.baseUrl}, mockMode: ${this.mockMode}`);
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResponse> {

@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.9-slim
 
 WORKDIR /app
 
@@ -8,22 +8,21 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Install Playwright and browsers
+RUN python -m playwright install chromium
+
+# Copy the rest of the application
 COPY . .
 
-# Expose port
+# Create cache directory
+RUN mkdir -p ./cache
+
+# Expose the port
 EXPOSE 8000
 
-# Run the application
+# Run the service
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
