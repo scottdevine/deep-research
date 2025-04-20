@@ -119,7 +119,7 @@ const ConcurrencyLimit = Number(process.env.CRAWL4AI_CONCURRENCY) || 2;
 // Initialize Crawl4AI adapter
 const crawl4ai = createCrawl4AI({
   baseUrl: process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000',
-  mockMode: process.env.CRAWL4AI_MOCK_MODE === 'true'
+  mockMode: false // Explicitly set to false for production
 });
 
 // take en user query, return a list of SERP queries

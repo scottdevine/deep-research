@@ -36,10 +36,19 @@ export class Crawl4AIAdapter {
 
   constructor(options: { baseUrl?: string; mockMode?: boolean } = {}) {
     this.baseUrl = options.baseUrl || process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000';
-    this.mockMode = options.mockMode !== undefined ? options.mockMode : process.env.CRAWL4AI_MOCK_MODE === 'true'; // Default to non-mock mode for production
+
+    // Explicitly set mockMode to false unless explicitly set to true in options
+    // Never default to mock mode based on environment variables for production
+    this.mockMode = options.mockMode === true ? true : false;
+
+    // Log a warning if mock mode is enabled
+    if (this.mockMode) {
+      console.warn('[Crawl4AI] WARNING: Mock mode is enabled. This should NEVER be used in production.');
+    }
   }
 
   async search(query: string, options: SearchOptions = {}): Promise<SearchResponse> {
+    console.log(`[Crawl4AI Debug] Search called with mockMode=${this.mockMode}`);
     if (this.mockMode) {
       console.log(`[MOCK] Searching for: ${query}`);
       return this.getMockResults(query, options);
@@ -101,10 +110,10 @@ export class Crawl4AIAdapter {
       }
     }
 
-    console.error(`[Crawl4AI] Failed after ${maxRetries} retries. Falling back to mock results.`);
+    console.error(`[Crawl4AI] Failed after ${maxRetries} retries. Not falling back to mock mode as per production requirements.`);
 
-    // After all retries failed, fall back to mock results
-    return this.getMockResults(query, options);
+    // After all retries failed, return an empty result set instead of falling back to mock mode
+    return { data: [] };
   }
 
   private getMockResults(query: string, options: SearchOptions = {}): SearchResponse {

@@ -90,8 +90,13 @@ const ConcurrencyLimit = Number(process.env.CRAWL4AI_CONCURRENCY) || 2;
 // Initialize Crawl4AI adapter
 const crawl4ai = createCrawl4AI({
   baseUrl: process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000',
-  mockMode: process.env.CRAWL4AI_MOCK_MODE === 'true'
+  mockMode: false // Explicitly set to false for production
 });
+
+// Debug log for Crawl4AI initialization
+console.log(`[DEBUG] Crawl4AI adapter initialized with:
+  baseUrl: ${process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000'}
+  mockMode: false`);
 
 // take en user query, return a list of SERP queries
 async function generateSerpQueries({
@@ -396,11 +401,13 @@ export async function enhancedDeepResearch({
       limit(async () => {
         try {
           // Search Crawl4AI
+          console.log(`[DEBUG] Calling Crawl4AI search with query: ${serpQuery.query}`);
           const result = await crawl4ai.search(serpQuery.query, {
             timeout: 15000,
             limit: 10,
             scrapeOptions: { formats: ['markdown'] },
           });
+          console.log(`[DEBUG] Crawl4AI search returned ${result.data.length} results`);
 
           // Search PubMed if enabled
           let newPubMedArticles: PubMedArticle[] = [];
