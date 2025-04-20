@@ -6,7 +6,7 @@ export interface StructuredLearning {
   content: string;
   sources: string[];
   keyPoints: string[];
-  importance: number; // 1-10 scale
+  importance: number; // Rating from 1-10 (no min/max constraints for API compatibility)
   topics: string[];
   metadata: {
     depth: number;
@@ -59,7 +59,7 @@ export interface ResearchResult {
   keyInsights?: string[];
 }
 
-export type ResearchDomain = 
+export type ResearchDomain =
   | 'scientific'
   | 'medical'
   | 'business'
