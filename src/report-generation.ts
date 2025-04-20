@@ -18,12 +18,12 @@ export async function generateReportOutline(
   learnings.forEach(learning => {
     learning.topics.forEach(topic => topics.add(topic));
   });
-  
+
   // Create a sample of learning titles to inform the outline
   const sampleTitles = learnings
     .slice(0, Math.min(20, learnings.length))
     .map(l => l.title);
-  
+
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
@@ -65,12 +65,12 @@ The outline should be comprehensive and cover all important aspects of the topic
       ...section,
       id: section.id || uuidv4(),
     };
-    
+
     const subsections = section.subsections.map(subsection => ({
       ...subsection,
       id: subsection.id || uuidv4(),
     }));
-    
+
     return {
       ...sectionWithId,
       subsections,
@@ -91,27 +91,27 @@ export async function categorizeLearnigsBySection(
   sections: ReportSection[]
 ): Promise<Record<string, StructuredLearning[]>> {
   const result: Record<string, StructuredLearning[]> = {};
-  
+
   // Initialize result with empty arrays for each section and subsection
   sections.forEach(section => {
     result[section.id] = [];
-    
+
     section.subsections.forEach(subsection => {
       result[subsection.id] = [];
     });
   });
-  
+
   // For each learning, determine which sections it belongs to
   for (const learning of learnings) {
     // Create a description of all sections and subsections
     const sectionsDescription = sections.map(section => {
-      const subsectionsText = section.subsections.map(sub => 
+      const subsectionsText = section.subsections.map(sub =>
         `    - ${sub.id}: ${sub.title} - ${sub.description}`
       ).join('\n');
-      
+
       return `  * ${section.id}: ${section.title} - ${section.description}\n${subsectionsText}`;
     }).join('\n');
-    
+
     // Use AI to categorize this learning
     const res = await generateObject({
       model: getModel(),
@@ -135,7 +135,7 @@ For each section or subsection where this learning belongs, provide the section 
         })).describe('List of sections and subsections where this learning belongs'),
       }),
     });
-    
+
     // Assign the learning to the relevant sections
     for (const { sectionId } of res.object.relevantSections) {
       if (result[sectionId]) {
@@ -143,7 +143,7 @@ For each section or subsection where this learning belongs, provide the section 
       }
     }
   }
-  
+
   return result;
 }
 
@@ -155,27 +155,47 @@ export async function processSectionContent(
   sectionLearnings: StructuredLearning[],
   insightDetail: number
 ): Promise<string> {
-  // If no learnings for this section, generate placeholder content
+  // If no learnings for this section, generate content based on the section title and description
   if (sectionLearnings.length === 0) {
-    return `## ${section.title}\n\n${section.description}\n\n*No specific research findings were available for this section.*`;
+    // Generate content based on the section title and description
+    const res = await generateObject({
+      model: getModel(),
+      system: systemPrompt(),
+      prompt: `Generate content for a section of a research report where we don't have specific research findings.
+
+Section Title: ${section.title}
+Section Purpose: ${section.description}
+
+Generate comprehensive, detailed content for this section based on general knowledge about the topic.
+The content should be well-structured, informative, and written in a professional academic style.
+Include relevant information that would typically be found in this section of a research report.
+The level of detail should be ${insightDetail <= 3 ? 'concise' : insightDetail <= 7 ? 'detailed' : 'comprehensive'} (insight detail: ${insightDetail}/10).
+
+Format the section in Markdown, starting with a level 2 heading (##) for the section title.`,
+      schema: z.object({
+        sectionContent: z.string().describe(`Generated content for the "${section.title}" section`),
+      }),
+    });
+
+    return res.object.sectionContent;
   }
-  
+
   // Determine detail level based on insight detail parameter
-  const detailLevel = insightDetail <= 3 ? 'concise' : 
-                     insightDetail <= 7 ? 'detailed' : 
+  const detailLevel = insightDetail <= 3 ? 'concise' :
+                     insightDetail <= 7 ? 'detailed' :
                      'comprehensive';
-  
+
   // Prepare learning content
   const learningContent = sectionLearnings.map(learning => {
-    const sourcesList = learning.sources.length > 0 
-      ? `\nSources: ${learning.sources.join(', ')}` 
+    const sourcesList = learning.sources.length > 0
+      ? `\nSources: ${learning.sources.join(', ')}`
       : '';
-    
+
     return `Title: ${learning.title}
 Content: ${learning.content}
 Key Points: ${learning.keyPoints.join(', ')}${sourcesList}`;
   }).join('\n\n---\n\n');
-  
+
   // Generate section content
   const res = await generateObject({
     model: getModel(),
@@ -203,7 +223,7 @@ Format the section in Markdown, starting with a level 2 heading (##) for the sec
       sectionContent: z.string().describe(`The ${detailLevel} content for the "${section.title}" section`),
     }),
   });
-  
+
   return res.object.sectionContent;
 }
 
@@ -216,14 +236,14 @@ export async function generateExecutiveSummary(
 ): Promise<string> {
   // Extract section titles for reference
   const sectionTitles = outline.sections.map(s => s.title).join(', ');
-  
+
   // Create a condensed version of section contents to avoid token limits
   const condensedContents = sectionContents.map(content => {
     // Extract the first paragraph after the heading
     const match = content.match(/^##\s+.*?\n\n(.*?)(\n\n|$)/s);
     return match ? match[1] : content.substring(0, 200) + '...';
   }).join('\n\n');
-  
+
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
@@ -245,7 +265,7 @@ Format the executive summary in Markdown, starting with a level 2 heading (##).`
       executiveSummary: z.string().describe('A comprehensive executive summary of the research report'),
     }),
   });
-  
+
   return res.object.executiveSummary;
 }
 
@@ -257,7 +277,7 @@ export function createReferencesSection(
   pubMedArticles: PubMedArticle[]
 ): string {
   let sourcesSection = `\n\n## References\n\n`;
-  
+
   // Add web sources
   if (webSources.length > 0) {
     sourcesSection += `### Web Sources\n\n`;
@@ -265,7 +285,7 @@ export function createReferencesSection(
       return `[web${index + 1}] ${url}`;
     }).join('\n\n');
   }
-  
+
   // Add PubMed citations if available
   if (pubMedArticles.length > 0) {
     sourcesSection += '\n\n### PubMed Citations\n\n';
@@ -273,7 +293,7 @@ export function createReferencesSection(
       return `[pubmed${index + 1}] ${article.authors?.join(', ') || '[No authors listed]'}. ${article.title}. ${article.journal || '[Journal not specified]'}. ${article.publicationDate || '[Date not specified]'}. ${article.doi ? `doi: ${article.doi}` : ''}\n   [PubMed Link](${article.url})`;
     }).join('\n\n');
   }
-  
+
   return sourcesSection;
 }
 
@@ -289,34 +309,34 @@ export function assembleStructuredReport(
 ): string {
   // Create title and metadata
   let report = `# ${outline.title}\n\n---\n\n`;
-  
+
   // Add executive summary
   report += `${executiveSummary}\n\n---\n\n`;
-  
+
   // Add table of contents
   report += `## Table of Contents\n\n`;
-  
+
   outline.sections.forEach((section, index) => {
     report += `${index + 1}. ${section.title}\n`;
-    
+
     section.subsections.forEach((subsection, subIndex) => {
       report += `   ${String.fromCharCode(97 + subIndex)}. ${subsection.title}\n`;
     });
   });
-  
+
   report += `\n---\n\n`;
-  
+
   // Add section contents
   outline.sections.forEach((section, index) => {
     report += `${sectionContents[index]}\n\n`;
   });
-  
+
   // Add references
   report += createReferencesSection(visitedUrls, pubMedArticles);
-  
+
   // Add footer
   report += `\n\n---\n\n*This report is prepared to provide a comprehensive, detailed, and academically rigorous overview of the topic, integrating all available research learnings and sources.*\n\n`;
-  
+
   return report;
 }
 
@@ -338,10 +358,10 @@ export async function writeFinalReportWithChunking({
 }): Promise<string> {
   // 1. Create a report outline with major sections based on the research topic
   const reportOutline = await generateReportOutline(prompt, learnings);
-  
+
   // 2. Categorize learnings according to outline sections
   const categorizedLearnings = await categorizeLearnigsBySection(learnings, reportOutline.sections);
-  
+
   // 3. Process each section independently with relevant learnings
   const sectionContents = await Promise.all(
     reportOutline.sections.map(async (section) => {
@@ -349,10 +369,10 @@ export async function writeFinalReportWithChunking({
       return processSectionContent(section, sectionLearnings, insightDetail);
     })
   );
-  
+
   // 4. Generate an executive summary that captures key findings across all sections
   const executiveSummary = await generateExecutiveSummary(reportOutline, sectionContents);
-  
+
   // 5. Assemble the final report with proper structure
   const finalReport = assembleStructuredReport(
     reportOutline,
@@ -361,6 +381,6 @@ export async function writeFinalReportWithChunking({
     visitedUrls,
     pubMedArticles
   );
-  
+
   return finalReport;
 }

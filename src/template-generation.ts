@@ -3,11 +3,11 @@ import { z } from 'zod';
 import { getModel } from './ai/providers';
 import { systemPrompt } from './prompt';
 import { PubMedArticle } from './pubmed';
-import { 
-  PopulatedTemplateSection, 
-  ReportTemplate, 
-  ResearchDomain, 
-  StructuredLearning 
+import {
+  PopulatedTemplateSection,
+  ReportTemplate,
+  ResearchDomain,
+  StructuredLearning
 } from './types';
 
 /**
@@ -21,12 +21,12 @@ export async function identifyResearchDomain(
   const sampleTitles = learnings
     .slice(0, Math.min(10, learnings.length))
     .map(l => l.title);
-  
+
   const topics = new Set<string>();
   learnings.forEach(learning => {
     learning.topics.forEach(topic => topics.add(topic));
   });
-  
+
   const res = await generateObject({
     model: getModel(),
     system: systemPrompt(),
@@ -52,12 +52,12 @@ Categorize this research into ONE of the following domains:
 Choose the SINGLE most appropriate domain based on the content.`,
     schema: z.object({
       domain: z.enum([
-        'scientific', 
-        'medical', 
-        'business', 
-        'historical', 
-        'technological', 
-        'social', 
+        'scientific',
+        'medical',
+        'business',
+        'historical',
+        'technological',
+        'social',
         'mixed'
       ]).describe('The most appropriate domain for this research'),
       explanation: z.string().describe('Brief explanation for why this domain was selected'),
@@ -451,15 +451,15 @@ export async function mapLearningsToTemplate(
   template: ReportTemplate
 ): Promise<PopulatedTemplateSection[]> {
   const result: PopulatedTemplateSection[] = [];
-  
+
   // Create a description of all template sections
-  const sectionsDescription = template.structure.sections.map(section => 
+  const sectionsDescription = template.structure.sections.map(section =>
     `  * ${section.id}: ${section.title} - ${section.purpose}`
   ).join('\n');
-  
+
   // Process each learning to determine which sections it belongs to
   const learningMappings: Record<string, string[]> = {};
-  
+
   for (const learning of learnings) {
     const res = await generateObject({
       model: getModel(),
@@ -483,23 +483,23 @@ For each section where this learning belongs, provide the section ID and a brief
         })).describe('List of sections where this learning belongs'),
       }),
     });
-    
+
     // Record the section IDs for this learning
     learningMappings[learning.id] = res.object.relevantSections.map(s => s.sectionId);
   }
-  
+
   // Populate the template sections with learnings
   for (const section of template.structure.sections) {
-    const sectionLearnings = learnings.filter(learning => 
+    const sectionLearnings = learnings.filter(learning =>
       learningMappings[learning.id]?.includes(section.id)
     );
-    
+
     result.push({
       section,
       learnings: sectionLearnings,
     });
   }
-  
+
   return result;
 }
 
@@ -510,25 +510,45 @@ export async function generateTemplateSections(
   populatedTemplate: PopulatedTemplateSection[]
 ): Promise<Record<string, string>> {
   const result: Record<string, string> = {};
-  
+
   for (const { section, learnings } of populatedTemplate) {
-    // If no learnings for this section, generate placeholder content
+    // If no learnings for this section, generate content based on the section title and purpose
     if (learnings.length === 0) {
-      result[section.id] = `## ${section.title}\n\n*No specific research findings were available for this section.*`;
+      // Generate content based on the section title and purpose
+      const res = await generateObject({
+        model: getModel(),
+        system: systemPrompt(),
+        prompt: `Generate content for a section of a ${populatedTemplate[0].section.title} research report where we don't have specific research findings.
+
+Section Title: ${section.title}
+Section Purpose: ${section.purpose}
+Content Guidelines: ${section.contentGuidelines}
+
+Generate comprehensive, detailed content for this section based on general knowledge about the topic.
+The content should be well-structured, informative, and written in a professional academic style appropriate for the domain.
+Include relevant information that would typically be found in this section of a research report.
+
+Format the section in Markdown, starting with a level 2 heading (##) for the section title.`,
+        schema: z.object({
+          sectionContent: z.string().describe(`Generated content for the "${section.title}" section`),
+        }),
+      });
+
+      result[section.id] = res.object.sectionContent;
       continue;
     }
-    
+
     // Prepare learning content
     const learningContent = learnings.map(learning => {
-      const sourcesList = learning.sources.length > 0 
-        ? `\nSources: ${learning.sources.join(', ')}` 
+      const sourcesList = learning.sources.length > 0
+        ? `\nSources: ${learning.sources.join(', ')}`
         : '';
-      
+
       return `Title: ${learning.title}
 Content: ${learning.content}
 Key Points: ${learning.keyPoints.join(', ')}${sourcesList}`;
     }).join('\n\n---\n\n');
-    
+
     // Generate section content
     const res = await generateObject({
       model: getModel(),
@@ -556,10 +576,10 @@ Format the section in Markdown, starting with a level 2 heading (##) for the sec
         sectionContent: z.string().describe(`The content for the "${section.title}" section`),
       }),
     });
-    
+
     result[section.id] = res.object.sectionContent;
   }
-  
+
   return result;
 }
 
@@ -572,24 +592,24 @@ export function assembleTemplateReport(
 ): string {
   // Create title and metadata
   let report = `# Research Report: ${template.domain.charAt(0).toUpperCase() + template.domain.slice(1)} Domain\n\n`;
-  
+
   // Add table of contents
   report += `## Table of Contents\n\n`;
-  
+
   template.structure.sections.forEach((section, index) => {
     report += `${index + 1}. ${section.title}\n`;
   });
-  
+
   report += `\n---\n\n`;
-  
+
   // Add section contents in the order specified by the template
   for (const section of template.structure.sections) {
     report += `${generatedSections[section.id] || `## ${section.title}\n\n*No content available for this section.*`}\n\n`;
   }
-  
+
   // Add footer
   report += `\n\n---\n\n*This report follows a structured template for ${template.domain} domain research, ensuring comprehensive coverage of all relevant aspects.*\n\n`;
-  
+
   return report;
 }
 
@@ -605,22 +625,22 @@ export async function templateBasedReportGeneration(
 ): Promise<string> {
   // 1. Identify appropriate domain-specific templates
   const domainType = await identifyResearchDomain(topic, structuredLearnings);
-  
+
   // 2. Select or combine appropriate templates
   const reportTemplate = selectReportTemplate(domainType, insightDetail);
-  
+
   // 3. Map learnings to template sections
   const populatedTemplate = await mapLearningsToTemplate(structuredLearnings, reportTemplate);
-  
+
   // 4. Generate section content following template guidelines
   const generatedSections = await generateTemplateSections(populatedTemplate);
-  
+
   // 5. Assemble final report with appropriate transitions
   let report = assembleTemplateReport(generatedSections, reportTemplate);
-  
+
   // 6. Add references section
   let referencesSection = `\n\n## References\n\n`;
-  
+
   // Add web sources
   if (visitedUrls.length > 0) {
     referencesSection += `### Web Sources\n\n`;
@@ -628,7 +648,7 @@ export async function templateBasedReportGeneration(
       return `[web${index + 1}] ${url}`;
     }).join('\n\n');
   }
-  
+
   // Add PubMed citations if available
   if (pubMedArticles.length > 0) {
     referencesSection += '\n\n### PubMed Citations\n\n';
@@ -636,8 +656,8 @@ export async function templateBasedReportGeneration(
       return `[pubmed${index + 1}] ${article.authors?.join(', ') || '[No authors listed]'}. ${article.title}. ${article.journal || '[Journal not specified]'}. ${article.publicationDate || '[Date not specified]'}. ${article.doi ? `doi: ${article.doi}` : ''}\n   [PubMed Link](${article.url})`;
     }).join('\n\n');
   }
-  
+
   report += referencesSection;
-  
+
   return report;
 }

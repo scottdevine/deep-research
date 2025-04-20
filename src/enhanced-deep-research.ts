@@ -9,11 +9,11 @@ import { getModel, trimPrompt } from './ai/providers';
 import { systemPrompt } from './prompt';
 import { MeshRestrictiveness, PubMedArticle, pubMedResultToMarkdown, searchPubMed } from './pubmed';
 import { createEnhancedReportPrompt } from './enhanced-report-prompt';
-import { 
-  LayeredLearning, 
-  ResearchResult, 
-  StructuredLearning, 
-  TopicNode 
+import {
+  LayeredLearning,
+  ResearchResult,
+  StructuredLearning,
+  TopicNode
 } from './types';
 import { aggregateHierarchicalLearnings } from './learning-processing';
 import { progressiveSummarization } from './summarization';
@@ -182,7 +182,7 @@ async function processSerpResult({
       content: z.string().describe("The detailed content exploring this learning"),
       sources: z.array(z.string()).describe("References to specific sources used"),
       keyPoints: z.array(z.string()).describe("Key points from this learning"),
-      importance: z.number().min(1).max(10).describe("Importance rating from 1-10"),
+      importance: z.number().describe("Importance rating from 1-10"),
       topics: z.array(z.string()).describe("Primary topics this learning relates to"),
     })).describe(`List of ${detailLevel} learnings, max of ${adjustedNumLearnings}`),
     followUpQuestions: z.array(z.string()).describe(
@@ -234,7 +234,7 @@ async function processSerpResult({
 function determineContentType(content: string): 'factual' | 'analytical' | 'conceptual' {
   // Simple heuristic based on keywords and patterns
   const lowerContent = content.toLowerCase();
-  
+
   // Check for analytical indicators
   const analyticalIndicators = [
     'analysis', 'analyze', 'evaluate', 'assessment', 'implications',
@@ -242,35 +242,35 @@ function determineContentType(content: string): 'factual' | 'analytical' | 'conc
     'consequently', 'as a result', 'this suggests', 'in contrast',
     'however', 'although', 'despite', 'nonetheless', 'nevertheless'
   ];
-  
+
   // Check for conceptual indicators
   const conceptualIndicators = [
     'concept', 'theory', 'framework', 'paradigm', 'approach',
     'philosophy', 'perspective', 'viewpoint', 'understanding',
     'conceptualization', 'abstract', 'theoretical', 'hypothetical'
   ];
-  
+
   // Count indicators
   let analyticalCount = 0;
   let conceptualCount = 0;
-  
+
   analyticalIndicators.forEach(indicator => {
     const regex = new RegExp(`\\b${indicator}\\b`, 'gi');
     const matches = lowerContent.match(regex);
     if (matches) analyticalCount += matches.length;
   });
-  
+
   conceptualIndicators.forEach(indicator => {
     const regex = new RegExp(`\\b${indicator}\\b`, 'gi');
     const matches = lowerContent.match(regex);
     if (matches) conceptualCount += matches.length;
   });
-  
+
   // Normalize by content length (per 1000 characters)
   const contentLength = content.length / 1000;
   const normalizedAnalytical = analyticalCount / contentLength;
   const normalizedConceptual = conceptualCount / contentLength;
-  
+
   // Determine type based on normalized counts
   if (normalizedConceptual > 0.5 && normalizedConceptual > normalizedAnalytical) {
     return 'conceptual';
@@ -561,17 +561,17 @@ export async function enhancedWriteFinalReport({
   });
   log('Applying hierarchical aggregation to learnings...');
   const hierarchicalLearnings = await aggregateHierarchicalLearnings(learnings);
-  
+
   // 2. Apply progressive summarization
   reportProgress({
     processingStage: 'progressive-summarization',
   });
   log('Applying progressive summarization...');
   const summarizedLearnings = await progressiveSummarization(
-    learnings, 
+    learnings,
     Math.max(...learnings.map(l => l.metadata.depth))
   );
-  
+
   // 3. Select important content if exceeding context limits
   reportProgress({
     processingStage: 'content-selection',
@@ -579,20 +579,20 @@ export async function enhancedWriteFinalReport({
   log('Selecting important content...');
   const maxContentSize = calculateMaxContentSize(insightDetail);
   const selectedLearnings = selectImportantContent(
-    summarizedLearnings.layeredLearnings, 
+    summarizedLearnings.layeredLearnings,
     maxContentSize
   );
-  
+
   // 4. Generate report using chunking and templates
   reportProgress({
     processingStage: 'report-generation',
     stage: 'report-generation',
   });
   log('Generating final report...');
-  
+
   // Determine which report generation approach to use based on insight detail
   let finalReport: string;
-  
+
   if (insightDetail >= 7) {
     // For high detail levels, use chunked report generation
     finalReport = await writeFinalReportWithChunking({
@@ -613,10 +613,10 @@ export async function enhancedWriteFinalReport({
       pubMedArticles
     );
   }
-  
+
   // Log the approximate word count for debugging
   const wordCount = finalReport.split(/\s+/).length;
   console.log(`Generated report with approximately ${wordCount} words`);
-  
+
   return finalReport;
 }
