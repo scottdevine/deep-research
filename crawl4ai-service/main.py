@@ -112,8 +112,9 @@ async def search(request: SearchRequest):
 
         # Configure browser
         browser_config = BrowserConfig(
-            headless=request.headless,
-            timeout=request.timeout / 1000  # Convert ms to seconds
+            headless=request.headless
+            # Note: BrowserConfig doesn't accept timeout directly
+            # The timeout is handled at the crawler level
         )
 
         # Configure crawler
@@ -129,6 +130,7 @@ async def search(request: SearchRequest):
             excluded_tags=request.excluded_tags,
             remove_overlay_elements=request.remove_overlay_elements,
             word_count_threshold=request.word_count_threshold,
+            timeout=request.timeout / 1000,  # Convert ms to seconds
             markdown_generator=DefaultMarkdownGenerator(
                 content_filter=PruningContentFilter(
                     threshold=0.48,
@@ -212,7 +214,8 @@ async def perform_search(query: str, limit: int, browser_config: BrowserConfig, 
 async def health_check():
     try:
         # Check if Crawl4AI is working by initializing a browser config
-        browser_config = BrowserConfig(headless=True, timeout=5)
+        # Note: BrowserConfig doesn't accept timeout directly
+        browser_config = BrowserConfig(headless=True)
         logger.info("Browser config initialized successfully")
 
         # Return detailed health information
