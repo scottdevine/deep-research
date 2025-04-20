@@ -42,13 +42,30 @@ The migration uses a REST API approach, where:
 
 First, you need to start the Crawl4AI service:
 
+#### Option A: Using the Start Script (Recommended)
+
 ```bash
 cd crawl4ai-service
 pip install -r requirements.txt
+./start.sh
+```
+
+The start script will:
+- Set the Python path
+- Create the cache directory
+- Install Playwright browsers if needed
+- Start the service
+
+#### Option B: Manual Setup
+
+```bash
+cd crawl4ai-service
+pip install -r requirements.txt
+python -m playwright install chromium
 python main.py
 ```
 
-Alternatively, you can use Docker:
+#### Option C: Using Docker
 
 ```bash
 cd crawl4ai-service
@@ -62,8 +79,10 @@ The service will start on port 8000 by default.
 Update your `.env.local` file to include the Crawl4AI service URL:
 
 ```
+# Crawl4AI Service settings
 CRAWL4AI_SERVICE_URL="http://localhost:8000"
 CRAWL4AI_CONCURRENCY="2"
+CRAWL4AI_MOCK_MODE="false"  # Set to "true" for testing without the service
 ```
 
 ### 3. Install Dependencies
@@ -82,6 +101,31 @@ Run the deep-research tool as usual:
 npm run api:enhanced
 ```
 
+### 5. Verify the Integration
+
+To verify that the Crawl4AI integration is working correctly:
+
+1. Check the health of the Crawl4AI service:
+
+```bash
+curl http://localhost:8000/health
+```
+
+You should see a response like:
+
+```json
+{
+  "status": "healthy",
+  "service": "crawl4ai-service",
+  "version": "1.0.0",
+  "crawl4ai_available": true,
+  "environment": "production",
+  "timestamp": "2023-06-01T12:00:00.000000"
+}
+```
+
+2. Create a research query in the web UI and check the logs to ensure that Crawl4AI is being used for web searches.
+
 ## Troubleshooting
 
 ### Service Not Running
@@ -92,10 +136,10 @@ If you see errors like "Connection refused" or "ECONNREFUSED", make sure the Cra
 curl http://localhost:8000/health
 ```
 
-Should return:
+Should return a health status response. If not, check the service logs:
 
-```json
-{"status":"healthy"}
+```bash
+cat crawl4ai-service/crawl4ai-service.log
 ```
 
 ### Python Dependencies
@@ -108,7 +152,32 @@ pip install -r crawl4ai-service/requirements.txt
 
 ### Chrome/Chromium Not Found
 
-Crawl4AI requires Chrome or Chromium to be installed on your system. If you encounter errors related to Chrome, make sure it's installed and accessible.
+Crawl4AI requires Chrome or Chromium to be installed on your system. If you encounter errors related to Chrome, install it using Playwright:
+
+```bash
+python -m playwright install chromium
+```
+
+### Using Mock Mode for Testing
+
+If you're having trouble with the Crawl4AI service, you can use mock mode for testing:
+
+1. Set `CRAWL4AI_MOCK_MODE="true"` in your `.env.local` file
+2. Restart the API server
+
+This will use mock data instead of making actual requests to the Crawl4AI service.
+
+### Debugging the Adapter
+
+To debug the Crawl4AI adapter, check the API server logs for messages with the `[Crawl4AI]` prefix. These messages provide information about the adapter's operations, including search requests, responses, and errors.
+
+### Performance Issues
+
+If you're experiencing performance issues:
+
+1. Increase the concurrency limit by setting `CRAWL4AI_CONCURRENCY` to a higher value (e.g., 4 or 8)
+2. Adjust the timeout settings in the adapter
+3. Consider using the cache mode by setting `CACHE_MODE="USE_CACHE"` in the Crawl4AI service's `.env` file
 
 ## Differences from Firecrawl
 
