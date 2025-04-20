@@ -88,8 +88,9 @@ function getReportLength(insightDetail: number): string {
 const ConcurrencyLimit = Number(process.env.CRAWL4AI_CONCURRENCY) || 2;
 
 // Initialize Crawl4AI adapter
-const firecrawl = createCrawl4AI({
+const crawl4ai = createCrawl4AI({
   baseUrl: process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000',
+  mockMode: process.env.CRAWL4AI_MOCK_MODE === 'true'
 });
 
 // take en user query, return a list of SERP queries
@@ -394,8 +395,8 @@ export async function enhancedDeepResearch({
     serpQueries.map(serpQuery =>
       limit(async () => {
         try {
-          // Search Firecrawl
-          const result = await firecrawl.search(serpQuery.query, {
+          // Search Crawl4AI
+          const result = await crawl4ai.search(serpQuery.query, {
             timeout: 15000,
             limit: 10,
             scrapeOptions: { formats: ['markdown'] },
