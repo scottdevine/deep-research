@@ -8,6 +8,7 @@ import MarkdownIt from 'markdown-it';
 import HTMLtoDOCX from 'html-to-docx';
 
 import { deepResearch, writeFinalAnswer, writeFinalReport } from './deep-research';
+import { enhancedDeepResearch, enhancedWriteFinalReport } from './enhanced-deep-research';
 import { MeshRestrictiveness } from './pubmed';
 import { generateFeedback } from './feedback';
 
@@ -18,6 +19,9 @@ const port = process.env.PORT || 3051;
 app.use(cors());
 app.use(express.json());
 
+// Import the StructuredLearning type
+import { StructuredLearning } from './types';
+
 // Store active research sessions
 interface ResearchSession {
   id: string;
@@ -25,7 +29,7 @@ interface ResearchSession {
   breadth: number;
   depth: number;
   meshRestrictiveness: MeshRestrictiveness;
-  insightDetail: number; // New parameter for controlling learning detail
+  insightDetail: number; // Parameter for controlling learning detail
   outputType: 'report' | 'answer';
   status: 'pending' | 'in-progress' | 'completed' | 'failed';
   progress: {
@@ -33,11 +37,12 @@ interface ResearchSession {
     percentage: number;
     currentQuery?: string;
     sources: string[];
+    processingStage?: 'hierarchical-aggregation' | 'progressive-summarization' | 'content-selection' | 'report-generation';
   };
   results?: {
     report?: string;
     answer?: string;
-    learnings: string[];
+    learnings: StructuredLearning[];
     visitedUrls: string[];
     pubMedArticles?: any[];
   };
@@ -147,8 +152,8 @@ app.post('/api/research', async (req: Request, res: Response) => {
           }
         }, 5000);
 
-        // Run the research
-        const { learnings, visitedUrls, pubMedArticles } = await deepResearch({
+        // Run the enhanced research
+        const { learnings, visitedUrls, pubMedArticles } = await enhancedDeepResearch({
           query: finalQuery,
           breadth,
           depth,
@@ -156,15 +161,24 @@ app.post('/api/research', async (req: Request, res: Response) => {
           insightDetail, // Pass the insightDetail parameter
           onProgress: (progress) => {
             // Update progress based on the current stage
-            if (progress.currentDepth === depth) {
-              session.progress.stage = 'generating-queries';
-              session.progress.percentage = 10 + (90 * (progress.completedQueries / progress.totalQueries) * 0.1);
-            } else if (progress.currentDepth > 0) {
-              session.progress.stage = 'searching-web';
-              session.progress.percentage = 20 + (90 * (progress.completedQueries / progress.totalQueries) * 0.4);
-            } else {
-              session.progress.stage = 'searching-pubmed';
-              session.progress.percentage = 60 + (90 * (progress.completedQueries / progress.totalQueries) * 0.2);
+            if (progress.stage === 'research') {
+              if (progress.currentDepth === depth) {
+                session.progress.stage = 'generating-queries';
+                session.progress.percentage = 10 + (90 * (progress.completedQueries / progress.totalQueries) * 0.1);
+              } else if (progress.currentDepth > 0) {
+                session.progress.stage = 'searching-web';
+                session.progress.percentage = 20 + (90 * (progress.completedQueries / progress.totalQueries) * 0.4);
+              } else {
+                session.progress.stage = 'searching-pubmed';
+                session.progress.percentage = 60 + (90 * (progress.completedQueries / progress.totalQueries) * 0.2);
+              }
+            } else if (progress.stage === 'processing') {
+              session.progress.stage = 'processing-results';
+              session.progress.processingStage = progress.processingStage;
+              session.progress.percentage = 70;
+            } else if (progress.stage === 'report-generation') {
+              session.progress.stage = 'generating-report';
+              session.progress.percentage = 80;
             }
 
             if (progress.currentQuery) {
@@ -190,17 +204,26 @@ app.post('/api/research', async (req: Request, res: Response) => {
         let answer = '';
 
         if (outputType === 'report') {
-          report = await writeFinalReport({
+          report = await enhancedWriteFinalReport({
             prompt: query,
             learnings,
             visitedUrls,
             pubMedArticles,
-            insightDetail // Pass the insightDetail parameter
+            insightDetail, // Pass the insightDetail parameter
+            onProgress: (progress) => {
+              // Update progress based on the processing stage
+              session.progress.stage = 'generating-report';
+              session.progress.processingStage = progress.processingStage;
+              session.progress.percentage = 80 + (progress.processingStage === 'report-generation' ? 15 : 0);
+              session.updatedAt = new Date();
+            }
           });
         } else {
+          // For answer output type, convert structured learnings to simple strings
+          const simpleLearnings = learnings.map(learning => `${learning.title}\n\n${learning.content}`);
           answer = await writeFinalAnswer({
             prompt: query,
-            learnings
+            learnings: simpleLearnings
           });
         }
 
