@@ -38,74 +38,29 @@ The migration uses a REST API approach, where:
 
 ## How to Use
 
-### 1. Start the Crawl4AI Service
+### Option A: Using Docker (Recommended)
 
-First, you need to start the Crawl4AI service:
+The recommended way to run the Crawl4AI service is using Docker, which eliminates environment issues and ensures consistent behavior across different machines.
 
-#### Option A: Using the Start Script (Recommended)
-
-```bash
-cd crawl4ai-service
-pip install -r requirements.txt
-./start.sh
-```
-
-The start script will:
-- Set the Python path
-- Create the cache directory
-- Install Playwright browsers if needed
-- Start the service
-
-#### Option B: Manual Setup
+#### 1. Start the Services with Docker Compose
 
 ```bash
-cd crawl4ai-service
-pip install -r requirements.txt
-python -m playwright install chromium
-python main.py
-```
-
-#### Option C: Using Docker
-
-```bash
-cd crawl4ai-service
 docker-compose up -d
 ```
 
-The service will start on port 8000 by default.
+This will start both the Crawl4AI service and the deep-research tool in Docker containers. The Crawl4AI service will be available at `http://crawl4ai:8000` within the Docker network.
 
-### 2. Update Environment Variables
+#### 2. Access the Web UI
 
-Update your `.env.local` file to include the Crawl4AI service URL:
+Open your browser and navigate to:
 
 ```
-# Crawl4AI Service settings
-CRAWL4AI_SERVICE_URL="http://localhost:8000"
-CRAWL4AI_CONCURRENCY="2"
-CRAWL4AI_MOCK_MODE="false"  # Set to "true" for testing without the service
+http://localhost:3002
 ```
 
-### 3. Install Dependencies
-
-Install the required Node.js dependencies:
-
-```bash
-npm install
-```
-
-### 4. Run the Deep Research Tool
-
-Run the deep-research tool as usual:
-
-```bash
-npm run api:enhanced
-```
-
-### 5. Verify the Integration
+#### 3. Verify the Integration
 
 To verify that the Crawl4AI integration is working correctly:
-
-1. Check the health of the Crawl4AI service:
 
 ```bash
 curl http://localhost:8000/health
@@ -124,11 +79,110 @@ You should see a response like:
 }
 ```
 
-2. Create a research query in the web UI and check the logs to ensure that Crawl4AI is being used for web searches.
+### Option B: Manual Setup
+
+If you prefer to run the services manually, follow these steps:
+
+#### 1. Start the Crawl4AI Service
+
+First, you need to start the Crawl4AI service:
+
+##### Using the Start Script
+
+```bash
+cd crawl4ai-service
+pip install -r requirements.txt
+./start.sh
+```
+
+The start script will:
+- Set the Python path
+- Create the cache directory
+- Install Playwright browsers if needed
+- Start the service
+
+##### Alternative Manual Setup
+
+```bash
+cd crawl4ai-service
+pip install -r requirements.txt
+python -m playwright install chromium
+python main.py
+```
+
+The service will start on port 8000 by default.
+
+#### 2. Update Environment Variables
+
+Update your `.env.local` file to include the Crawl4AI service URL:
+
+```
+# Crawl4AI Service settings
+CRAWL4AI_SERVICE_URL="http://localhost:8000"
+CRAWL4AI_CONCURRENCY="2"
+CRAWL4AI_MOCK_MODE="false"  # Set to "true" for testing without the service
+```
+
+#### 3. Install Dependencies
+
+Install the required Node.js dependencies:
+
+```bash
+npm install
+```
+
+#### 4. Run the Deep Research Tool
+
+Run the deep-research tool as usual:
+
+```bash
+npm run api:enhanced
+```
+
+#### 5. Verify the Integration
+
+Create a research query in the web UI and check the logs to ensure that Crawl4AI is being used for web searches.
 
 ## Troubleshooting
 
-### Service Not Running
+### Docker Issues
+
+#### Service Not Starting
+
+If the Docker containers are not starting properly, check the Docker logs:
+
+```bash
+docker-compose logs crawl4ai
+```
+
+Or for the deep-research container:
+
+```bash
+docker-compose logs deep-research
+```
+
+#### Connection Issues
+
+If the deep-research tool cannot connect to the Crawl4AI service, make sure both containers are running:
+
+```bash
+docker-compose ps
+```
+
+Check that the service URL is correctly set to `http://crawl4ai:8000` in the `.env.local` file when using Docker.
+
+#### Rebuilding the Containers
+
+If you make changes to the code or configuration, rebuild the containers:
+
+```bash
+docker-compose build
+docker-compose up -d
+```
+
+### Manual Setup Issues
+
+#### Service Not Running
 
 If you see errors like "Connection refused" or "ECONNREFUSED", make sure the Crawl4AI service is running:
 
@@ -142,7 +196,7 @@ Should return a health status response. If not, check the service logs:
 cat crawl4ai-service/crawl4ai-service.log
 ```
 
-### Python Dependencies
+#### Python Dependencies
 
 If you encounter Python dependency issues, make sure you have installed all the required dependencies:
 
@@ -150,7 +204,7 @@ If you encounter Python dependency issues, make sure you have installed all the 
 pip install -r crawl4ai-service/requirements.txt
 ```
 
-### Chrome/Chromium Not Found
+#### Chrome/Chromium Not Found
 
 Crawl4AI requires Chrome or Chromium to be installed on your system. If you encounter errors related to Chrome, install it using Playwright:
 
@@ -158,7 +212,9 @@ Crawl4AI requires Chrome or Chromium to be installed on your system. If you enco
 python -m playwright install chromium
 ```
 
-### Using Mock Mode for Testing
+### General Issues
+
+#### Using Mock Mode for Testing
 
 If you're having trouble with the Crawl4AI service, you can use mock mode for testing:
 
@@ -167,11 +223,11 @@ If you're having trouble with the Crawl4AI service, you can use mock mode for te
 
 This will use mock data instead of making actual requests to the Crawl4AI service.
 
-### Debugging the Adapter
+#### Debugging the Adapter
 
 To debug the Crawl4AI adapter, check the API server logs for messages with the `[Crawl4AI]` prefix. These messages provide information about the adapter's operations, including search requests, responses, and errors.
 
-### Performance Issues
+#### Performance Issues
 
 If you're experiencing performance issues:
 
