@@ -1,4 +1,4 @@
-import FirecrawlApp, { SearchResponse } from '@mendable/firecrawl-js';
+import createCrawl4AI, { SearchResponse } from './crawl4ai-adapter';
 import { generateObject } from 'ai';
 import { compact } from 'lodash-es';
 import pLimit from 'p-limit';
@@ -114,13 +114,11 @@ function getReportLength(insightDetail: number): string {
 }
 
 // increase this if you have higher API rate limits
-const ConcurrencyLimit = Number(process.env.FIRECRAWL_CONCURRENCY) || 2;
+const ConcurrencyLimit = Number(process.env.CRAWL4AI_CONCURRENCY) || 2;
 
-// Initialize Firecrawl with optional API key and optional base url
-
-const firecrawl = new FirecrawlApp({
-  apiKey: process.env.FIRECRAWL_KEY ?? '',
-  apiUrl: process.env.FIRECRAWL_BASE_URL,
+// Initialize Crawl4AI adapter
+const firecrawl = createCrawl4AI({
+  baseUrl: process.env.CRAWL4AI_SERVICE_URL || 'http://localhost:8000',
 });
 
 // take en user query, return a list of SERP queries
