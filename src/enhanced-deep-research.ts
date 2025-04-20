@@ -300,7 +300,7 @@ function createLearningPrompt(query: string, numLearnings: number, insightDetail
     8. Cite specific sources for key information
     9. Be structured with clear sections and logical flow
     10. Include 5-10 key topics that this learning relates to
-    11. Include an importance rating (1-10) indicating how central this learning is to the research topic
+    11. Include an importance rating indicating how central this learning is to the research topic
     `;
   } else if (insightDetail >= 5) {
     promptTemplate += `
@@ -312,7 +312,7 @@ function createLearningPrompt(query: string, numLearnings: number, insightDetail
     5. Reference specific sources where appropriate
     6. Be well-organized with a logical structure
     7. Include 3-7 key topics that this learning relates to
-    8. Include an importance rating (1-10) indicating how central this learning is to the research topic
+    8. Include an importance rating indicating how central this learning is to the research topic
     `;
   } else if (insightDetail >= 3) {
     promptTemplate += `
@@ -323,7 +323,7 @@ function createLearningPrompt(query: string, numLearnings: number, insightDetail
     4. Include key facts and figures where relevant
     5. Be focused and well-structured
     6. Include 2-5 key topics that this learning relates to
-    7. Include an importance rating (1-10) indicating how central this learning is to the research topic
+    7. Include an importance rating indicating how central this learning is to the research topic
     `;
   } else {
     promptTemplate += `
@@ -333,7 +333,7 @@ function createLearningPrompt(query: string, numLearnings: number, insightDetail
     3. Include key facts and figures where relevant
     4. Be focused and to the point
     5. Include 1-3 key topics that this learning relates to
-    6. Include an importance rating (1-10) indicating how central this learning is to the research topic
+    6. Include an importance rating indicating how central this learning is to the research topic
     `;
   }
 
